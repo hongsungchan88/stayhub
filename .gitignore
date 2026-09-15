@@ -22,3 +22,31 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# 빌드 결과물
+build/
+out/
+.gradle/
+
+# 로그
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 비밀 정보 — 절대 커밋 금지
+application-local.yml
+application-local.properties
+application-secret.*
+.env
+*.env
