@@ -20,3 +20,26 @@
 - docs/practice/ 첫 PR 연습용
 - publishing/ 정적 화면 (HTML/CSS)
 - (Spring Boot 프로젝트는 루트에 생성 예정 — 10월)
+
+## 개발 규칙
+
+- **브랜치** `main` / `feature-{코드}-{작업명}` — 예: `feature-rsv-checkin`
+- **커밋** `[도메인] 작업내용` — 예: `[RSV] 예약 목록 검색 조건 추가`
+- **병합** main 직접 push 금지. feature → PR → 총괄 승인 → Squash merge
+- **PR 본문** 무엇을 / 왜 / 확인한 것 / 관련 기능ID 4항목
+- **올리면 안 되는 것** DB 접속정보, `application-local.yml`, 빌드 결과물, 10MB 초과 파일
+
+## 막혔을 때
+
+같은 문제로 **30분** 넘기면 바로 총괄에게 연락하세요. 이때 ①실행한 명령어 ②에러 메시지 전문 ③`git status` 출력을 함께 보내주세요.
+
+## 가이드
+
+- 팀 Git 매뉴얼 — <링크>
+- 5인 팀 작업 분담표 — <링크>
+- 화면 퍼블리싱 4주 로드맵 (팀원 D) — <링크>
+
+## 기술 스택
+
+Java / Spring Boot / JPA / MySQL / Thymeleaf
+※ 구체적인 버전은 9/22 회의에서 확정 (팀원 A 제안)
