@@ -17,3 +17,6 @@
 | 총괄 | 콘텐츠·커뮤니케이션 | `cms` `com` |
 
 ## 폴더 구조
+docs/practice/ 첫 PR 연습용
+publishing/ 정적 화면 (HTML/CSS)
+(Spring Boot 프로젝트는 루트에 생성 예정 — 10월)
