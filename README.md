@@ -50,3 +50,48 @@
 
 Java / Spring Boot / JPA / MySQL / Thymeleaf
 ※ 구체적인 버전은 9/22 회의에서 확정 (팀원 A 제안)
+
+## 실행 방법
+
+처음 받았다면 아래 3단계를 순서대로 하세요. 끝나면 브라우저에 성공 화면이 뜹니다.
+
+### 1. 데이터베이스 만들기
+
+MySQL에 접속해 `stayhub` 데이터베이스를 만듭니다.
+
+```sql
+CREATE DATABASE stayhub DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+테이블은 만들지 않아도 됩니다. 애플리케이션이 실행되면서 자동으로 생성합니다.
+
+### 2. application-local.yml 작성하기
+
+`src/main/resources/application-local.yml.example` 파일을 같은 폴더에 복사한 뒤,
+이름을 `application-local.yml` 로 바꾸고 비밀번호를 본인 것으로 채웁니다.
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/stayhub?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: root
+    password: 본인이 MySQL 설치할 때 정한 비밀번호
+```
+
+이 파일은 `.gitignore` 에 등록돼 있어 커밋되지 않습니다.
+**이 단계를 건너뛰면 실행할 때 `Failed to configure a DataSource` 오류가 납니다.**
+
+### 3. 실행하기
+
+```bash
+./gradlew bootRun
+```
+
+Windows 명령 프롬프트에서는 `gradlew bootRun` 입니다.
+처음 실행하면 Gradle과 라이브러리를 내려받느라 몇 분 걸립니다.
+
+실행된 뒤 브라우저에서 <http://localhost:8080> 을 열어
+**"stayhub 개발 환경 세팅 완료"** 화면과 **DB 연결: 성공** 이 보이면 끝입니다.
+
+DB 연결이 실패로 나오면 화면에 확인할 항목이 함께 표시됩니다.
+30분 넘게 막히면 총괄에게 연락하세요.
