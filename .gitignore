@@ -50,3 +50,11 @@ application-local.properties
 application-secret.*
 .env
 *.env
+
+# Maven 빌드 결과물
+target/
+
+# 빌드 wrapper 는 반드시 커밋해야 함 (위 *.jar 규칙의 예외)
+# 이 파일이 빠지면 다른 팀원이 gradlew / mvnw 로 빌드할 수 없습니다
+!gradle/wrapper/gradle-wrapper.jar
+!.mvn/wrapper/maven-wrapper.jar

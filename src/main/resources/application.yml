@@ -1,0 +1,17 @@
+spring:
+  # 실행할 프로파일. local 이면 application-local.yml 을 함께 읽습니다.
+  profiles:
+    active: local
+
+  jpa:
+    hibernate:
+      # 엔티티 클래스를 보고 테이블을 자동으로 만들고 바꿉니다. (개발용. 운영에서는 쓰지 않습니다)
+      ddl-auto: update
+    # 실행되는 SQL 을 콘솔에 찍어줍니다. 쿼리가 어떻게 나가는지 눈으로 확인할 수 있습니다.
+    show-sql: true
+    properties:
+      hibernate:
+        # 콘솔에 찍히는 SQL 을 여러 줄로 정렬해 읽기 좋게 만듭니다.
+        format_sql: true
+    # 화면을 그리는 동안 DB 연결을 붙잡고 있지 않도록 끕니다. 커넥션 고갈을 막아줍니다.
+    open-in-view: false
