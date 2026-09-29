@@ -30,7 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
  * GET    /api/guidebooks/{id}                    상세
  * POST   /api/guidebooks                         등록
  * PUT    /api/guidebooks/{id}                    수정
- * DELETE /api/guidebooks/{id}                    삭제 (소프트 삭제)
+ * DELETE /api/guidebooks/{id}                    삭제 (소프트 삭제 — 유형 ①만)
  * </pre>
  *
  * <p><b>따라 만들 때 바꿀 곳</b>
@@ -40,6 +40,7 @@ import org.springframework.web.bind.annotation.RestController;
  *   <li>목록의 {@code category} 파라미터 — 내 테이블에 필터가 없으면 지웁니다</li>
  *   <li>등록의 중복 제목 경고 — 가이드북만의 규칙입니다. 내 테이블에 없으면 표시된 줄을 지우고
  *       {@code return ApiResponse.success(response);} 한 줄만 남깁니다</li>
+ *   <li>DELETE — 유형 ②·③이면 메서드째 지웁니다</li>
  * </ul>
  */
 @RestController
@@ -86,7 +87,7 @@ public class GuidebookController { // ★ 바꿀 곳: 클래스명
 		return ApiResponse.success(guidebookService.update(id, request));
 	}
 
-	@DeleteMapping("/{id}")
+	@DeleteMapping("/{id}") // ★ 바꿀 곳: 유형 ②·③이면 이 메서드째 삭제
 	public ApiResponse<Void> delete(@PathVariable Long id) {
 		guidebookService.delete(id);
 		return ApiResponse.success(null);

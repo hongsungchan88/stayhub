@@ -42,6 +42,8 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>{@code create} 의 {@code PropertyScope} 줄 — 내 테이블에 {@code property_id} 가 없으면 지웁니다</li>
  *   <li>예외 메시지 — "가이드북" 을 내 기능 이름으로</li>
  *   <li>{@code hasSameTitle} — 가이드북만의 규칙입니다. 내 테이블에 없으면 메서드째 지웁니다</li>
+ *   <li>유형 ②·③이면 — {@code delete} 는 메서드째 지우고, {@code findActive} 는 이름을 {@code findOrThrow} 로 바꾼 뒤
+ *       안의 조회를 {@code findById(id)} 로 (예외는 그대로). {@code getList} 는 {@code findAll(pageable)} 로</li>
  * </ul>
  */
 @Service
@@ -71,9 +73,9 @@ public class GuidebookService { // ★ 바꿀 곳: 클래스명
 
 		Page<Guidebook> guidebooks; // ★ 바꿀 곳: 엔티티 타입
 		if (category == null) { // ★ 바꿀 곳: 필터가 없는 테이블은 이 if 문째 지우고 아래 한 줄만 남깁니다
-			guidebooks = guidebookRepository.findByStatus(EntityStatus.ACTIVE, pageable);
+			guidebooks = guidebookRepository.findByStatus(EntityStatus.ACTIVE, pageable); // ★ 바꿀 곳: 유형 ②·③이면 findAll(pageable)
 		} else {
-			guidebooks = guidebookRepository.findByCategoryAndStatus(category, EntityStatus.ACTIVE, pageable);
+			guidebooks = guidebookRepository.findByCategoryAndStatus(category, EntityStatus.ACTIVE, pageable); // ★ 바꿀 곳: 유형 ②·③이면 status 조건 없는 필터 메서드로
 		}
 
 		return PageResponse.from(guidebooks.map(GuidebookResponse::from)); // ★ 바꿀 곳: 응답 DTO
@@ -121,15 +123,15 @@ public class GuidebookService { // ★ 바꿀 곳: 클래스명
 		return GuidebookResponse.from(guidebook); // ★ 바꿀 곳: 응답 DTO
 	}
 
-	/** 소프트 삭제. 행은 남기고 status 만 DELETED 로 바꿉니다. */
+	/** 소프트 삭제. 행은 남기고 status 만 DELETED 로 바꿉니다. (유형 ①만) */
 	@Transactional
-	public void delete(Long id) {
+	public void delete(Long id) { // ★ 바꿀 곳: 유형 ②·③이면 이 메서드째 삭제
 		findActive(id).delete();
 	}
 
 	/** ACTIVE 인 항목 하나를 찾습니다. 없거나 삭제됐으면 예외. */
-	private Guidebook findActive(Long id) { // ★ 바꿀 곳: 엔티티 타입
-		return guidebookRepository.findByIdAndStatus(id, EntityStatus.ACTIVE)
+	private Guidebook findActive(Long id) { // ★ 바꿀 곳: 엔티티 타입. 유형 ②·③이면 이름을 findOrThrow 로 (Shift+F6 으로 바꾸면 호출하는 곳도 같이 바뀜)
+		return guidebookRepository.findByIdAndStatus(id, EntityStatus.ACTIVE) // ★ 바꿀 곳: 유형 ②·③이면 findById(id)
 				.orElseThrow(() -> new BusinessException("가이드북을 찾을 수 없습니다.")); // ★ 바꿀 곳: 메시지
 	}
 }

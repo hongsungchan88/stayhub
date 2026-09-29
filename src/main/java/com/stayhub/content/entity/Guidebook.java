@@ -22,11 +22,11 @@ import org.hibernate.annotations.ColumnDefault;
  * <br>DB 테이블 한 행을 자바 객체 하나로 표현합니다. 테이블 정의서의 컬럼이 필드 하나씩에 대응합니다.
  * {@code created_at} / {@code updated_at} 은 {@link BaseEntity} 를 상속해서 자동으로 채워집니다.
  *
- * <p>값을 바꾸는 방법은 딱 세 가지뿐입니다.
+ * <p>값을 바꾸는 방법은 아래 메서드뿐입니다.
  * <ul>
  *   <li>새로 만들 때 — {@link #create}</li>
  *   <li>고칠 때 — {@link #update}</li>
- *   <li>지울 때 — {@link #delete} (실제로 지우지 않고 status 만 DELETED 로)</li>
+ *   <li>지울 때 — {@link #delete} (실제로 지우지 않고 status 만 DELETED 로. 유형 ①만)</li>
  * </ul>
  * {@code @Setter} 를 쓰지 않는 이유: 아무 곳에서나 값을 바꿀 수 있으면 어디서 바뀌었는지 추적이 안 됩니다.
  *
@@ -37,7 +37,8 @@ import org.hibernate.annotations.ColumnDefault;
  *   <li>PK 컬럼명 — {@code guidebook_id} → {@code room_id}. 필드명은 {@code id} 그대로 둡니다</li>
  *   <li>컬럼 필드 — 정의서의 컬럼마다 {@code @Column} + 필드 한 묶음씩</li>
  *   <li>{@code create} / {@code update} 의 파라미터 — 위 필드에 맞춰서</li>
- *   <li>{@code propertyId} — {@code property_id} 가 있는 5개 테이블만 둡니다. 없으면 필드와 {@code create} 의 관련 줄을 지웁니다</li>
+ *   <li>{@code propertyId} — {@code property_id} 가 있는 4개 테이블만 둡니다. 없으면 필드와 {@code create} 의 관련 줄을 지웁니다</li>
+ *   <li>{@code status} 필드·{@code delete()} — 테이블 유형에 따라. ① 그대로 / ② {@code EntityStatus} 를 도메인 enum(예: {@code RoomStatus})으로 바꾸고 {@code delete()} 삭제 / ③ 둘 다 삭제</li>
  * </ul>
  *
  * <p><b>enum 컬럼은 반드시 {@code columnDefinition = "VARCHAR(n)"}</b>
@@ -64,8 +65,9 @@ public class Guidebook extends BaseEntity { // ★ 바꿀 곳: 클래스명 (테
 	 * {@code @ManyToOne} 을 쓰지 않고 값(Long)만 들고 있습니다.
 	 * open-in-view: false 설정이라 연관관계를 걸면 서비스 밖에서 지연 로딩 예외가 납니다.
 	 *
-	 * <p>property_id 가 있는 5개 테이블(rooms, properties, property_images, property_facilities,
-	 * guidebooks)만 해당합니다. 등록할 때 {@code PropertyScope} 값을 넣고, 조회 조건에는 넣지 않습니다(정책 32행).
+	 * <p>property_id 가 있는 4개 테이블(rooms, property_images, property_facilities, guidebooks)만 해당합니다.
+	 * 등록할 때 {@code PropertyScope} 값을 넣고, 조회 조건에는 넣지 않습니다(정책 32행).
+	 * properties는 property_id가 자기 PK(AUTO_INCREMENT)라 해당 없음. PropertyScope를 넣지 않는다.
 	 * 내 테이블에 property_id 가 없으면 이 필드와 {@code create} 의 관련 줄을 전부 지웁니다.
 	 */
 	@Column(name = "property_id", nullable = false) // ★ 바꿀 곳: 내 테이블에 property_id 가 없으면 이 필드째 삭제
@@ -87,8 +89,8 @@ public class Guidebook extends BaseEntity { // ★ 바꿀 곳: 클래스명 (테
 
 	@Enumerated(EnumType.STRING)
 	@ColumnDefault("'ACTIVE'") // 정의서의 "기본 ACTIVE". 문자열이라 작은따옴표로 한 번 더 감쌉니다.
-	@Column(name = "status", nullable = false, columnDefinition = "VARCHAR(20)")
-	private EntityStatus status;
+	@Column(name = "status", nullable = false, columnDefinition = "VARCHAR(20)") // ★ 바꿀 곳: 유형 ②는 정의서의 길이·기본값으로, ③은 이 묶음 삭제
+	private EntityStatus status; // ★ 바꿀 곳: 유형 ②는 도메인 enum(예: RoomStatus)으로, ③은 삭제
 
 	/**
 	 * 새 가이드북을 만듭니다. 상태는 항상 ACTIVE 로 시작합니다.
@@ -108,7 +110,7 @@ public class Guidebook extends BaseEntity { // ★ 바꿀 곳: 클래스명 (테
 		guidebook.title = title; // ★ 바꿀 곳: 필드
 		guidebook.content = content; // ★ 바꿀 곳: 필드
 		guidebook.sortOrder = defaultSortOrder(sortOrder);
-		guidebook.status = EntityStatus.ACTIVE;
+		guidebook.status = EntityStatus.ACTIVE; // ★ 바꿀 곳: 유형 ②는 정의서의 첫 상태값으로, ③은 삭제
 		return guidebook;
 	}
 
@@ -125,8 +127,8 @@ public class Guidebook extends BaseEntity { // ★ 바꿀 곳: 클래스명 (테
 		this.sortOrder = defaultSortOrder(sortOrder);
 	}
 
-	/** 소프트 삭제. 행은 그대로 두고 status 만 DELETED 로 바꿉니다. */
-	public void delete() {
+	/** 소프트 삭제. 행은 그대로 두고 status 만 DELETED 로 바꿉니다. (유형 ①만) */
+	public void delete() { // ★ 바꿀 곳: 유형 ②·③이면 이 메서드째 삭제
 		this.status = EntityStatus.DELETED;
 	}
 

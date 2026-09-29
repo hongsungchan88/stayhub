@@ -37,7 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>{@code createRequest} 도우미 — 내 요청 DTO 에 맞는 값으로</li>
  *   <li>중복 제목 테스트 — 가이드북만의 규칙입니다. 내 테이블에 없으면 테스트째 지웁니다</li>
  * </ul>
- * 나머지 네 개(등록·수정·삭제·삭제 후 조회)는 모든 테이블에 똑같이 필요합니다. 지우지 마세요.
+ * 등록·수정은 모든 테이블. 삭제 두 개는 유형 ①만 — 유형 ②·③이면 테스트째 지웁니다.
  */
 @SpringBootTest
 @Transactional
@@ -87,7 +87,7 @@ class GuidebookServiceTest { // ★ 바꿀 곳: 클래스명
 
 	@Test
 	@DisplayName("삭제하면 목록에서 빠지고, 행은 DELETED 로 남는다")
-	void deleteRemovesFromList() {
+	void deleteRemovesFromList() { // ★ 바꿀 곳: 유형 ②·③이면 이 테스트째 삭제
 		GuidebookResponse created = guidebookService.create(createRequest(GuidebookCategory.WIFI, "와이파이 비밀번호"));
 
 		guidebookService.delete(created.id());
@@ -103,7 +103,7 @@ class GuidebookServiceTest { // ★ 바꿀 곳: 클래스명
 
 	@Test
 	@DisplayName("삭제된 항목을 상세 조회하면 BusinessException 이 난다")
-	void getDeletedThrows() {
+	void getDeletedThrows() { // ★ 바꿀 곳: 유형 ②·③이면 이 테스트째 삭제
 		GuidebookResponse created = guidebookService.create(createRequest(GuidebookCategory.WIFI, "와이파이 비밀번호"));
 		guidebookService.delete(created.id());
 

@@ -6,7 +6,9 @@ package com.stayhub.common;
  * <p><b>이 파일이 하는 일</b>
  * <br>정책: 1차 개발 범위는 단일 숙소 고정입니다. 그래서 {@code property_id} 는 항상 1 입니다.
  *
- * <p>{@code property_id} 컬럼이 있는 테이블은 등록할 때 서비스에서 이 상수를 넣습니다. 요청(화면)에서는 받지 않습니다.
+ * <p>{@code property_id} 가 있는 4개 테이블(rooms, property_images, property_facilities, guidebooks)은
+ * 등록할 때 서비스에서 이 상수를 넣습니다. 요청(화면)에서는 받지 않습니다.
+ * properties 는 property_id 가 자기 PK(AUTO_INCREMENT)라 해당 없습니다. 이 상수를 넣지 않습니다.
  * 요청에서 받으면 누군가 값을 바꿔 보내서 다른 숙소의 데이터를 건드릴 수 있습니다.
  * 조회 조건에는 넣지 않습니다. 1차는 숙소가 하나뿐이라 조건을 걸 필요가 없습니다(정책정의서 32행).
  *

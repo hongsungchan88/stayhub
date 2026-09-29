@@ -5,8 +5,8 @@ package com.stayhub.common;
  *
  * <p><b>이 파일이 하는 일</b>
  * <br>행을 DB에서 실제로 지우지 않고 {@code DELETED} 로 표시만 해두기 위한 값입니다.
- * 테이블 정의서에 {@code status VARCHAR(20) — ACTIVE / DELETED} 가 있는 테이블은
- * 모두 이 enum 을 씁니다.
+ * 이 enum 을 쓰는 테이블은 users·guidebooks 두 개뿐입니다 (정책정의서 24행 — 1차 삭제 기능은 이 둘뿐).
+ * 나머지 32개 테이블에는 삭제 기능도, 소프트 삭제용 status 도 없습니다.
  *
  * <p><b>이 enum 은 소프트 삭제 전용입니다.</b>
  * 예약 상태(확정·취소·체크인 등) 같은 업무 상태는 여기에 값을 추가하지 말고,
