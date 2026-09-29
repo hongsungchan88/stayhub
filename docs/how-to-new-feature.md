@@ -33,7 +33,8 @@ git switch -c feature-{코드}-{작업명}
 - **① 삭제 기능 있음** — 가이드북 그대로 만듭니다.
 - **② 업무 상태 있음** — `EntityStatus` 대신 도메인 enum 을 새로 만듭니다 (예: `RoomStatus`. 규약 2번대로 STRING + VARCHAR).
   조회에 status 조건 없이 `findAll(pageable)`·`findById` 를 씁니다.
-  `delete()`·DELETE API·삭제 테스트 2개는 만들지 않습니다.
+  `delete()`·DELETE API·`deleteRemovesFromList` 테스트는 만들지 않습니다.
+  `getDeletedThrows` 는 delete 줄을 지우고 `created.id()` 대신 `99999L` 로 조회하는 "없는 항목 조회" 테스트로 바꿔 남깁니다.
 - **③ status 없음** — status 관련 줄을 전부 지웁니다. `findAll(pageable)`·`findById` 를 씁니다. 삭제 기능은 없습니다.
 
 ②·③은 `JpaRepository` 에 이미 있는 기본 메서드(`findAll`, `findById`, `save`)로 충분해서,
@@ -79,7 +80,7 @@ content 도메인의 Guidebook 관련 파일들을 참고해서, 똑같은 구�
 [테이블명] 기능을 [도메인 폴더]에 만들어줘.
 테이블 정의: [테이블 정의서 행 붙여넣기]
 이 테이블은 [유형 ① 삭제 기능 있음 / ② 업무 상태 있음 / ③ status 없음]이야.
-②·③이면 EntityStatus·status 조회 조건·delete()·DELETE API·삭제 테스트는 빼줘.
+②·③이면 EntityStatus·status 조회 조건·delete()·DELETE API·삭제 테스트는 빼되, 없는 항목 조회 테스트는 99999L 로 조회하도록 바꿔서 남겨줘.
 - 다른 테이블을 가리키는 컬럼은 Long ID 값으로만 (@ManyToOne 금지)
 - 컬럼·테이블 이름은 테이블 정의서와 한 글자도 다르지 않게
 - 가이드북에 없는 새로운 방식은 쓰지 말 것

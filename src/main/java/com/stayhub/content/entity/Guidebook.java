@@ -88,8 +88,8 @@ public class Guidebook extends BaseEntity { // ★ 바꿀 곳: 클래스명 (테
 	private int sortOrder; // ★ 바꿀 곳: 필드명
 
 	@Enumerated(EnumType.STRING)
-	@ColumnDefault("'ACTIVE'") // 정의서의 "기본 ACTIVE". 문자열이라 작은따옴표로 한 번 더 감쌉니다.
-	@Column(name = "status", nullable = false, columnDefinition = "VARCHAR(20)") // ★ 바꿀 곳: 유형 ②는 정의서의 길이·기본값으로, ③은 이 묶음 삭제
+	@ColumnDefault("'ACTIVE'") // ★ 바꿀 곳: 유형 ②는 정의서의 기본값으로 (예: properties 는 'DRAFT'), ③은 삭제. 문자열이라 작은따옴표로 한 번 더 감쌉니다.
+	@Column(name = "status", nullable = false, columnDefinition = "VARCHAR(20)") // ★ 바꿀 곳: 유형 ②는 정의서의 길이로, ③은 이 묶음 삭제
 	private EntityStatus status; // ★ 바꿀 곳: 유형 ②는 도메인 enum(예: RoomStatus)으로, ③은 삭제
 
 	/**
