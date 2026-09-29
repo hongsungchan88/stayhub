@@ -11,16 +11,18 @@
 | 담당 | 영역 | 브랜치 코드 |
 | --- | --- | --- |
 | 팀원 A | 계정·통계·시스템 | `acc` `sta` `sys` |
-| 팀원 B | 예약·채널 | `rsv` `chn` |
+| 팀원 B | 예약·채널 | `rsv` `chn` `gst` |
 | 팀원 C | 객실·결제 | `rom` `pay` |
-| 팀원 D | 화면 퍼블리싱 | `pub` |
-| 총괄 | 콘텐츠·커뮤니케이션 | `cms` `com` |
+| 팀원 D | 화면 퍼블리싱 · 프로모션·리뷰 | `pub` `cms` `gst` |
+| 총괄 | 콘텐츠·커뮤니케이션 | `cms` `com` `gst` |
+
+> `gst`는 게스트 영역 화면(SCR-GST-01~05)입니다. 팀원 D·B·총괄이 나눠 맡습니다.
 
 ## 폴더 구조
 
 - `docs/practice/` — 첫 PR 연습용
 - `publishing/` — 정적 화면 (HTML/CSS)
-- 루트 — Spring Boot 프로젝트 (10월 중 생성 예정)
+- 루트 — Spring Boot 프로젝트 (생성 완료)
 
 ## 개발 규칙
 
@@ -48,8 +50,11 @@
 
 ## 기술 스택
 
-Java / Spring Boot / JPA / MySQL / Thymeleaf
-※ 구체적인 버전은 9/22 회의에서 확정 (팀원 A 제안)
+**JDK 21 / Spring Boot 3.5.16 / Gradle 8.14.5 / MySQL 8.4** · JPA · Thymeleaf
+
+버전은 고정입니다. 다른 버전을 설치하거나, IntelliJ가 띄우는 Gradle·플러그인
+업그레이드 제안을 수락하지 마세요. 한 명만 올려도 그 사람 빌드가 깨집니다.
+변경이 필요하면 정기 회의 안건으로 올려주세요.
 
 ## 실행 방법
 
