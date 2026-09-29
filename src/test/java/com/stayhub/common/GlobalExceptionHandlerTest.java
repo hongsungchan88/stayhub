@@ -1,6 +1,7 @@
 package com.stayhub.common;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -94,6 +95,25 @@ class GlobalExceptionHandlerTest {
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.success").value(false))
 				.andExpect(jsonPath("$.message").value("from 값이 필요합니다."));
+	}
+
+	@Test
+	@DisplayName("DELETE 를 받지 않는 주소에 DELETE 하면 405 — 유형 ②·③ 테이블에 DELETE")
+	void methodNotSupported() throws Exception {
+		// /test/items/{id} 는 GET 만 있습니다. DELETE API 가 없는 유형 ②·③ 테이블과 같은 상황입니다.
+		mockMvc.perform(delete("/test/items/1"))
+				.andExpect(status().isMethodNotAllowed())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value("지원하지 않는 요청 방식입니다."));
+	}
+
+	@Test
+	@DisplayName("본문 형식이 JSON 이 아니면 415 — Content-Type 누락")
+	void mediaTypeNotSupported() throws Exception {
+		mockMvc.perform(post("/test/body").contentType(MediaType.APPLICATION_FORM_URLENCODED).content("category=WIFI"))
+				.andExpect(status().isUnsupportedMediaType())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value("요청 형식이 올바르지 않습니다. Content-Type: application/json 을 확인해 주세요."));
 	}
 
 	@Test

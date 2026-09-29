@@ -6,6 +6,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -24,6 +26,8 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
  * <ul>
  *   <li>400 — 요청이 잘못됨 (업무 규칙 위반, 검증 실패, 값 형식 오류, JSON 오류, 필수 파라미터 누락)</li>
  *   <li>404 — 없는 주소 (favicon.ico 등). ERROR 로그를 남기지 않습니다</li>
+ *   <li>405 — 주소는 맞는데 그 주소가 받지 않는 요청 방식 (예: DELETE API 가 없는 테이블에 DELETE)</li>
+ *   <li>415 — 요청 본문 형식이 JSON 이 아님 (Content-Type 누락 등)</li>
  *   <li>500 — 위에 해당하지 않는 나머지. 대개 코드 버그이고 ERROR 로그와 스택 트레이스를 남깁니다</li>
  * </ul>
  */
@@ -115,6 +119,44 @@ public class GlobalExceptionHandler {
 		return ResponseEntity
 				.status(HttpStatus.BAD_REQUEST)
 				.body(ApiResponse.error(e.getParameterName() + " 값이 필요합니다."));
+	}
+
+	/**
+	 * 주소는 맞는데 그 주소가 받지 않는 요청 방식(GET·POST·PUT·DELETE)으로 보냈을 때. 405.
+	 *
+	 * <p>이런 요청일 때 납니다.
+	 * <ul>
+	 *   <li>유형 ②·③ 테이블에 DELETE 요청 — 이 테이블들은 DELETE API 가 없습니다.
+	 *       예) {@code curl -X DELETE http://localhost:8080/api/rooms/1}</li>
+	 *   <li>목록 주소에 PUT·DELETE — 예) {@code DELETE /api/guidebooks} (ID 빠짐)</li>
+	 * </ul>
+	 * 응답은 "지원하지 않는 요청 방식입니다."
+	 */
+	@ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+	public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
+		log.warn("지원하지 않는 요청 방식: {}", e.getMethod());
+		return ResponseEntity
+				.status(HttpStatus.METHOD_NOT_ALLOWED)
+				.body(ApiResponse.error("지원하지 않는 요청 방식입니다."));
+	}
+
+	/**
+	 * 요청 본문의 형식(Content-Type)이 JSON 이 아닐 때. 415.
+	 *
+	 * <p>이런 요청일 때 납니다.
+	 * <ul>
+	 *   <li>curl 로 POST·PUT 하면서 {@code -H "Content-Type: application/json"} 을 빠뜨림
+	 *       — curl 은 이때 본문을 폼 형식(x-www-form-urlencoded)으로 보냅니다</li>
+	 *   <li>화면 코드에서 fetch 로 보낼 때 headers 에 Content-Type 을 안 넣음</li>
+	 * </ul>
+	 * 응답은 "요청 형식이 올바르지 않습니다. Content-Type: application/json 을 확인해 주세요."
+	 */
+	@ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+	public ResponseEntity<ApiResponse<Void>> handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException e) {
+		log.warn("지원하지 않는 요청 형식: {}", e.getContentType());
+		return ResponseEntity
+				.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+				.body(ApiResponse.error("요청 형식이 올바르지 않습니다. Content-Type: application/json 을 확인해 주세요."));
 	}
 
 	/**
