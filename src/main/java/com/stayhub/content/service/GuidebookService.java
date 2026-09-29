@@ -31,11 +31,15 @@ import org.springframework.transaction.annotation.Transactional;
  * </ul>
  * 이렇게 해두면 조회 메서드에서 실수로 값을 바꿔도 DB 에 반영되지 않고, 쓰기 메서드가 한눈에 보입니다.
  *
+ * <p><b>숙소 ID</b> — {@code property_id} 는 등록할 때만 {@link PropertyScope} 값을 넣고,
+ * 조회 조건에는 넣지 않습니다(정책정의서 32행).
+ *
  * <p><b>따라 만들 때 바꿀 곳</b>
  * <ul>
  *   <li>클래스명·리포지토리 타입·DTO 타입 — Guidebook 을 내 테이블 이름으로</li>
  *   <li>{@code getList} 의 카테고리 필터 — 내 테이블에 필터가 없으면 if 문째 지웁니다</li>
  *   <li>{@code create} / {@code update} 에서 엔티티로 넘기는 값 — 내 컬럼에 맞게</li>
+ *   <li>{@code create} 의 {@code PropertyScope} 줄 — 내 테이블에 {@code property_id} 가 없으면 지웁니다</li>
  *   <li>예외 메시지 — "가이드북" 을 내 기능 이름으로</li>
  *   <li>{@code hasSameTitle} — 가이드북만의 규칙입니다. 내 테이블에 없으면 메서드째 지웁니다</li>
  * </ul>
@@ -67,11 +71,9 @@ public class GuidebookService { // ★ 바꿀 곳: 클래스명
 
 		Page<Guidebook> guidebooks; // ★ 바꿀 곳: 엔티티 타입
 		if (category == null) { // ★ 바꿀 곳: 필터가 없는 테이블은 이 if 문째 지우고 아래 한 줄만 남깁니다
-			guidebooks = guidebookRepository.findByPropertyIdAndStatus(
-					PropertyScope.DEFAULT_PROPERTY_ID, EntityStatus.ACTIVE, pageable);
+			guidebooks = guidebookRepository.findByStatus(EntityStatus.ACTIVE, pageable);
 		} else {
-			guidebooks = guidebookRepository.findByPropertyIdAndCategoryAndStatus(
-					PropertyScope.DEFAULT_PROPERTY_ID, category, EntityStatus.ACTIVE, pageable);
+			guidebooks = guidebookRepository.findByCategoryAndStatus(category, EntityStatus.ACTIVE, pageable);
 		}
 
 		return PageResponse.from(guidebooks.map(GuidebookResponse::from)); // ★ 바꿀 곳: 응답 DTO
@@ -87,15 +89,14 @@ public class GuidebookService { // ★ 바꿀 곳: 클래스명
 	 * (가이드북만의 규칙 — 내 테이블에 없으면 이 메서드를 지우세요)
 	 */
 	public boolean hasSameTitle(GuidebookCategory category, String title) {
-		return guidebookRepository.existsByPropertyIdAndCategoryAndTitleAndStatus(
-				PropertyScope.DEFAULT_PROPERTY_ID, category, title, EntityStatus.ACTIVE);
+		return guidebookRepository.existsByCategoryAndTitleAndStatus(category, title, EntityStatus.ACTIVE);
 	}
 
 	/** 등록. property_id 는 요청에서 받지 않고 여기서 상수로 넣습니다. */
 	@Transactional
 	public GuidebookResponse create(GuidebookCreateRequest request) { // ★ 바꿀 곳: 요청·응답 타입
 		Guidebook guidebook = Guidebook.create( // ★ 바꿀 곳: 엔티티 타입
-				PropertyScope.DEFAULT_PROPERTY_ID,
+				PropertyScope.DEFAULT_PROPERTY_ID, // ★ 바꿀 곳: 내 테이블에 property_id 가 없으면 이 줄 삭제
 				request.category(), // ★ 바꿀 곳: 요청 필드
 				request.title(), // ★ 바꿀 곳: 요청 필드
 				request.content(), // ★ 바꿀 곳: 요청 필드
@@ -128,8 +129,7 @@ public class GuidebookService { // ★ 바꿀 곳: 클래스명
 
 	/** ACTIVE 인 항목 하나를 찾습니다. 없거나 삭제됐으면 예외. */
 	private Guidebook findActive(Long id) { // ★ 바꿀 곳: 엔티티 타입
-		return guidebookRepository
-				.findByIdAndPropertyIdAndStatus(id, PropertyScope.DEFAULT_PROPERTY_ID, EntityStatus.ACTIVE)
+		return guidebookRepository.findByIdAndStatus(id, EntityStatus.ACTIVE)
 				.orElseThrow(() -> new BusinessException("가이드북을 찾을 수 없습니다.")); // ★ 바꿀 곳: 메시지
 	}
 }

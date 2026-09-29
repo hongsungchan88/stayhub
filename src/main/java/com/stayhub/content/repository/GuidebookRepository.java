@@ -13,12 +13,16 @@ import org.springframework.data.jpa.repository.JpaRepository;
  *
  * <p><b>이 파일이 하는 일</b>
  * <br>인터페이스만 선언하면 Spring 이 메서드 이름을 읽고 SQL 을 알아서 만들어 줍니다.
- * 예) {@code findByPropertyIdAndStatus} → {@code WHERE property_id = ? AND status = ?}
+ * 예) {@code findByCategoryAndStatus} → {@code WHERE category = ? AND status = ?}
  * 저장({@code save})·ID 조회({@code findById}) 같은 기본 메서드는 {@code JpaRepository} 에 이미 있습니다.
  *
- * <p>모든 조회에 {@code propertyId} 와 {@code status} 조건이 붙어 있습니다.
- * 다른 숙소의 데이터나 삭제된 데이터가 섞여 나오지 않게 하기 위해서입니다.
+ * <p>모든 조회에 {@code status} 조건이 붙어 있습니다. 삭제된 데이터가 섞여 나오지 않게 하기 위해서입니다.
  * 정렬은 여기서 정하지 않고 서비스가 {@code Pageable} 에 담아 넘깁니다.
+ *
+ * <p><b>property_id 는 조회 조건에 넣지 않습니다.</b>
+ * {@code property_id} 컬럼이 있는 테이블은 등록할 때 {@code PropertyScope} 값을 넣고,
+ * 조회 조건에는 넣지 않는다(정책 32행).
+ * 내 테이블에 {@code property_id} 가 없으면 관련 줄을 전부 지운다.
  *
  * <p><b>따라 만들 때 바꿀 곳</b>
  * <ul>
@@ -30,16 +34,16 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface GuidebookRepository extends JpaRepository<Guidebook, Long> { // ★ 바꿀 곳: 이름·엔티티 타입
 
 	/** 목록 (필터 없음). */
-	Page<Guidebook> findByPropertyIdAndStatus(Long propertyId, EntityStatus status, Pageable pageable);
+	Page<Guidebook> findByStatus(EntityStatus status, Pageable pageable);
 
 	/** 목록 (카테고리 필터). */
-	Page<Guidebook> findByPropertyIdAndCategoryAndStatus( // ★ 바꿀 곳: 내 테이블의 필터 컬럼 (없으면 삭제)
-			Long propertyId, GuidebookCategory category, EntityStatus status, Pageable pageable);
+	Page<Guidebook> findByCategoryAndStatus( // ★ 바꿀 곳: 내 테이블의 필터 컬럼 (없으면 삭제)
+			GuidebookCategory category, EntityStatus status, Pageable pageable);
 
 	/** 상세. 없거나 삭제된 항목이면 빈 Optional. */
-	Optional<Guidebook> findByIdAndPropertyIdAndStatus(Long id, Long propertyId, EntityStatus status); // ★ 바꿀 곳: 엔티티 타입
+	Optional<Guidebook> findByIdAndStatus(Long id, EntityStatus status); // ★ 바꿀 곳: 엔티티 타입
 
 	/** 같은 카테고리에 같은 제목이 있는지. (가이드북만의 규칙 — 다른 테이블엔 보통 없음) */
-	boolean existsByPropertyIdAndCategoryAndTitleAndStatus( // ★ 바꿀 곳: 내 테이블에 중복 규칙이 없으면 삭제
-			Long propertyId, GuidebookCategory category, String title, EntityStatus status);
+	boolean existsByCategoryAndTitleAndStatus( // ★ 바꿀 곳: 내 테이블에 중복 규칙이 없으면 삭제
+			GuidebookCategory category, String title, EntityStatus status);
 }

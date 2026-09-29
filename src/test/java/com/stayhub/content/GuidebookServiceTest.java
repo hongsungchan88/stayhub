@@ -53,6 +53,7 @@ class GuidebookServiceTest { // ★ 바꿀 곳: 클래스명
 	void setUp() {
 		// 개발 DB 에 이미 들어 있는 데이터 때문에 결과가 흔들리지 않도록 테스트 안에서만 비웁니다.
 		// @Transactional 이라 테스트가 끝나면 지운 것까지 원래대로 돌아옵니다.
+		// 경고: @Transactional을 지우면 개발 DB의 이 테이블이 실제로 비워집니다. 지우지 마세요.
 		guidebookRepository.deleteAll(); // ★ 바꿀 곳: 리포지토리
 	}
 

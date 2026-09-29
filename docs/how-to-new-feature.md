@@ -57,7 +57,7 @@ content 도메인의 Guidebook 관련 파일들을 참고해서, 똑같은 구�
 ```
 
 예) `[테이블명]` → `rooms`, `[도메인 폴더]` → `room`,
-`[테이블 정의서 행 붙여넣기]` → 정책정의서의 rooms 테이블 행을 통째로 복사
+`[테이블 정의서 행 붙여넣기]` → 테이블 정의서의 rooms 테이블 행을 통째로 복사
 
 ### ④ 가이드북과 나란히 비교하기
 
@@ -107,8 +107,8 @@ PR을 올리기 전에 하나씩 체크하세요. 가이드북은 전부 지키�
   — 빼면 테이블명이 클래스명(단수형)으로 만들어져 정의서와 달라지고, 적어두면 정의서와 한 줄씩 대조할 수 있습니다.
 - [ ] **2. enum 은 `@Enumerated(EnumType.STRING)` + `columnDefinition = "VARCHAR(n)"`**
   — 기본값(ORDINAL)은 0·1·2 순번으로 저장돼 값을 중간에 추가하면 기존 데이터 뜻이 바뀌고, VARCHAR 를 빼면 MySQL ENUM 타입이 되어 값을 추가할 때 저장이 실패합니다.
-- [ ] **3. 다른 테이블은 `@ManyToOne` 대신 `Long xxxId` 값으로만. `propertyId` 는 요청에서 받지 않고 서비스에서 `PropertyScope.DEFAULT_PROPERTY_ID`**
-  — `open-in-view: false` 라서 연관관계는 서비스 밖에서 지연 로딩 예외가 나고, 숙소 ID를 요청에서 받으면 다른 숙소 데이터를 건드릴 수 있습니다.
+- [ ] **3. 다른 테이블은 `@ManyToOne` 대신 `Long xxxId` 값으로만. `property_id` 는 등록할 때 서비스에서 `PropertyScope.DEFAULT_PROPERTY_ID` 를 넣고, 요청에서 받지 않으며, 조회 조건에는 넣지 않는다 (property_id 가 있는 5개 테이블만 해당 — rooms, properties, property_images, property_facilities, guidebooks)**
+  — `open-in-view: false` 라서 연관관계는 서비스 밖에서 지연 로딩 예외가 나고, 1차는 숙소가 하나라 조회에 숙소 조건을 걸지 않되 컬럼은 정의해 둡니다(정책정의서 32행).
 - [ ] **4. Lombok 은 `@Getter`, `@NoArgsConstructor(access = AccessLevel.PROTECTED)` 만. 생성은 `create(...)`, 변경은 `update(...)`·`delete()`**
   — `@Setter` 가 있으면 어디서 값이 바뀌었는지 추적이 안 되고 `@Builder` 는 필수값을 빠뜨려도 컴파일되니, 값이 바뀌는 곳을 세 메서드로 모아둡니다.
 - [ ] **5. 컨트롤러는 엔티티를 반환하지 않는다. 응답 DTO 변환은 서비스 안에서**

@@ -37,6 +37,7 @@ import org.hibernate.annotations.ColumnDefault;
  *   <li>PK 컬럼명 — {@code guidebook_id} → {@code room_id}. 필드명은 {@code id} 그대로 둡니다</li>
  *   <li>컬럼 필드 — 정의서의 컬럼마다 {@code @Column} + 필드 한 묶음씩</li>
  *   <li>{@code create} / {@code update} 의 파라미터 — 위 필드에 맞춰서</li>
+ *   <li>{@code propertyId} — {@code property_id} 가 있는 5개 테이블만 둡니다. 없으면 필드와 {@code create} 의 관련 줄을 지웁니다</li>
  * </ul>
  *
  * <p><b>enum 컬럼은 반드시 {@code columnDefinition = "VARCHAR(n)"}</b>
@@ -62,8 +63,12 @@ public class Guidebook extends BaseEntity { // ★ 바꿀 곳: 클래스명 (테
 	 * 숙소 ID. properties 테이블을 가리킵니다.
 	 * {@code @ManyToOne} 을 쓰지 않고 값(Long)만 들고 있습니다.
 	 * open-in-view: false 설정이라 연관관계를 걸면 서비스 밖에서 지연 로딩 예외가 납니다.
+	 *
+	 * <p>property_id 가 있는 5개 테이블(rooms, properties, property_images, property_facilities,
+	 * guidebooks)만 해당합니다. 등록할 때 {@code PropertyScope} 값을 넣고, 조회 조건에는 넣지 않습니다(정책 32행).
+	 * 내 테이블에 property_id 가 없으면 이 필드와 {@code create} 의 관련 줄을 전부 지웁니다.
 	 */
-	@Column(name = "property_id", nullable = false)
+	@Column(name = "property_id", nullable = false) // ★ 바꿀 곳: 내 테이블에 property_id 가 없으면 이 필드째 삭제
 	private Long propertyId;
 
 	@Enumerated(EnumType.STRING)
@@ -91,14 +96,14 @@ public class Guidebook extends BaseEntity { // ★ 바꿀 곳: 클래스명 (테
 	 * @param sortOrder 비어 있으면 0. 0끼리는 등록 순(guidebook_id 순)으로 정렬됩니다.
 	 */
 	public static Guidebook create( // ★ 바꿀 곳: 파라미터를 내 테이블 컬럼에 맞게
-			Long propertyId,
+			Long propertyId, // ★ 바꿀 곳: property_id 가 없으면 삭제
 			GuidebookCategory category,
 			String title,
 			String content,
 			Integer sortOrder
 	) {
 		Guidebook guidebook = new Guidebook(); // ★ 바꿀 곳: 클래스명
-		guidebook.propertyId = propertyId;
+		guidebook.propertyId = propertyId; // ★ 바꿀 곳: property_id 가 없으면 삭제
 		guidebook.category = category; // ★ 바꿀 곳: 필드
 		guidebook.title = title; // ★ 바꿀 곳: 필드
 		guidebook.content = content; // ★ 바꿀 곳: 필드
