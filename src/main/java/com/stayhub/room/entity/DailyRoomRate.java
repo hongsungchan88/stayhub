@@ -72,7 +72,9 @@ public class DailyRoomRate extends BaseEntity {
 	private int remainingRooms;
 
 	/** 요금 갱신(재계산) 일시. 산출·재계산할 때마다 지금 시각으로 바뀝니다. */
-	@ColumnDefault("CURRENT_TIMESTAMP") // 정의서의 기본값
+	// 정의서의 기본값 CURRENT_TIMESTAMP. 컬럼이 datetime(6)(소수점 6자리 초)으로 만들어져서
+	// MySQL 이 기본값도 같은 자릿수인 CURRENT_TIMESTAMP(6) 만 받습니다. (괄호를 빼면 테이블 생성이 실패)
+	@ColumnDefault("CURRENT_TIMESTAMP(6)")
 	@Column(name = "generated_at", nullable = false)
 	private LocalDateTime generatedAt;
 
