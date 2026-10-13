@@ -27,6 +27,7 @@ import org.hibernate.annotations.ColumnDefault;
  * <ul>
  *   <li>새로 만들 때 — {@link #create}</li>
  *   <li>고칠 때 — {@link #update}</li>
+ *   <li>상태를 바꿀 때 — {@link #changeStatus}</li>
  * </ul>
  * 유형 ②(업무 상태 있음) 테이블이라 삭제 기능은 없습니다.
  *
@@ -114,6 +115,13 @@ public class Room extends BaseEntity {
 		this.roomType = roomType;
 		this.basePrice = basePrice;
 		this.maxOccupancy = defaultMaxOccupancy(maxOccupancy);
+	}
+
+	/** 객실 상태를 바꾸고, 바꾼 담당자와 시각을 남깁니다. (ROM-001) */
+	public void changeStatus(RoomStatus newStatus, Long changedBy) {
+		this.status = newStatus;
+		this.statusUpdatedBy = changedBy;
+		this.statusUpdatedAt = LocalDateTime.now();
 	}
 
 	/** 정의서의 "기본 1" — 비어 있으면 1 을 넣습니다. */
