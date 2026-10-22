@@ -19,15 +19,13 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 숙소 API.
  *
- * <p>HTTP 요청을 받아 서비스에 넘기고, 결과를 {@link ApiResponse} 로 감싸서 돌려줍니다.
- *
  * <pre>
- * GET    /api/properties?page=0     목록 (page 는 생략 가능)
- * GET    /api/properties/{id}       상세
- * POST   /api/properties            등록
- * PUT    /api/properties/{id}       수정 (게시 상태 변경 포함)
+ * GET    /api/properties?page=0      목록 (page 는 생략 가능)
+ * GET    /api/properties/{id}        상세
+ * POST   /api/properties             등록 (DRAFT 로 시작)
+ * PUT    /api/properties/{id}        수정 (게시 상태 변경 포함)
  * </pre>
- * 유형 ②라서 DELETE 가 없습니다.
+ * 삭제 기능은 없습니다(유형 ②).
  */
 @RestController
 @RequestMapping("/api/properties")
@@ -53,8 +51,7 @@ public class PropertyController {
 
 	@PostMapping
 	public ApiResponse<PropertyResponse> create(@Valid @RequestBody PropertyCreateRequest request) {
-		PropertyResponse response = propertyService.create(request);
-		return ApiResponse.success(response);
+		return ApiResponse.success(propertyService.create(request));
 	}
 
 	@PutMapping("/{id}")
