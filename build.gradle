@@ -43,6 +43,9 @@ dependencies {
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
 
+	// 비밀번호 암호화(BCrypt)만. spring-boot-starter-security 를 넣으면 모든 요청에 로그인 화면이 뜹니다.
+	implementation 'org.springframework.security:spring-security-crypto'
+
 	// 테스트
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
