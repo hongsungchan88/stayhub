@@ -6,7 +6,8 @@ import java.time.LocalDateTime;
 /**
  * 숙소 이미지 응답 (목록·상세·등록·수정이 모두 이 모양으로 나갑니다).
  *
- * <p>propertyId 는 내부용 값이라 뺍니다. 정의서에 updated_at 이 없으므로 updatedAt 도 없습니다.
+ * <p>propertyId 는 내부용 값이라 응답에서 뺍니다.
+ * 테이블에 {@code updated_at} 컬럼이 없어서 수정일시도 넣지 않습니다.
  */
 public record PropertyImageResponse(
 		Long id,
@@ -19,15 +20,15 @@ public record PropertyImageResponse(
 ) {
 
 	/** 엔티티를 응답 모양으로 바꿉니다. */
-	public static PropertyImageResponse from(PropertyImage propertyImage) {
+	public static PropertyImageResponse from(PropertyImage image) {
 		return new PropertyImageResponse(
-				propertyImage.getId(),
-				propertyImage.getFilePath(),
-				propertyImage.getFileSize(),
-				propertyImage.getFileExt(),
-				propertyImage.isMain(),
-				propertyImage.getSortOrder(),
-				propertyImage.getCreatedAt()
+				image.getId(),
+				image.getFilePath(),
+				image.getFileSize(),
+				image.getFileExt(),
+				image.isMain(),
+				image.getSortOrder(),
+				image.getCreatedAt()
 		);
 	}
 }

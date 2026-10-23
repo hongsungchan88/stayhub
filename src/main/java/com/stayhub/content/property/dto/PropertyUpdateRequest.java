@@ -9,7 +9,7 @@ import jakarta.validation.constraints.Size;
  * 숙소 수정 요청 (PUT /api/properties/{id} 의 본문).
  *
  * <p>PUT 은 "통째로 바꾸기" 라서 모든 값을 다시 보냅니다.
- * 등록과 달리 게시 상태(DRAFT·PUBLISHED)를 함께 받아, 게시·게시 취소를 수정으로 처리합니다.
+ * 등록과 달리 게시 상태(status)를 여기서 바꿉니다. (DRAFT ↔ PUBLISHED)
  */
 public record PropertyUpdateRequest(
 

@@ -19,18 +19,18 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 숙소 이미지 API.
  *
- * <p>HTTP 요청을 받아 서비스에 넘기고, 결과를 {@link ApiResponse} 로 감싸서 돌려줍니다.
+ * <p>팀 URL 규칙에 따라 하이픈을 씁니다({@code /api/property-images}). 테이블명은 {@code property_images} 그대로입니다.
  *
  * <pre>
- * GET    /api/property_images?page=0     목록 (page 는 생략 가능)
- * GET    /api/property_images/{id}       상세
- * POST   /api/property_images            등록
- * PUT    /api/property_images/{id}       수정
+ * GET    /api/property-images?page=0     목록 (page 는 생략 가능)
+ * GET    /api/property-images/{id}       상세
+ * POST   /api/property-images            등록
+ * PUT    /api/property-images/{id}       수정
  * </pre>
- * 유형 ③이라 DELETE 가 없습니다.
+ * 삭제 기능은 없습니다(유형 ③).
  */
 @RestController
-@RequestMapping("/api/property_images")
+@RequestMapping("/api/property-images")
 public class PropertyImageController {
 
 	private final PropertyImageService propertyImageService;
@@ -53,8 +53,7 @@ public class PropertyImageController {
 
 	@PostMapping
 	public ApiResponse<PropertyImageResponse> create(@Valid @RequestBody PropertyImageCreateRequest request) {
-		PropertyImageResponse response = propertyImageService.create(request);
-		return ApiResponse.success(response);
+		return ApiResponse.success(propertyImageService.create(request));
 	}
 
 	@PutMapping("/{id}")
