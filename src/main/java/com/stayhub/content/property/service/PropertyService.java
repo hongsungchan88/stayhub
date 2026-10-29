@@ -20,6 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>유형 ②라 조회에 status 조건을 넣지 않고, 삭제 메서드가 없습니다.
  * {@code property_id} 는 자기 PK 라서 {@code PropertyScope} 값을 넣지 않습니다.
+ *
+ * <p>숙소 소개 저장(수정) 시 체크된 시설도 함께 저장합니다({@link PropertyFacilityService#sync}).
  */
 @Service
 @Transactional(readOnly = true)
@@ -31,9 +33,14 @@ public class PropertyService {
 	);
 
 	private final PropertyRepository propertyRepository;
+	private final PropertyFacilityService propertyFacilityService;
 
-	public PropertyService(PropertyRepository propertyRepository) {
+	public PropertyService(
+			PropertyRepository propertyRepository,
+			PropertyFacilityService propertyFacilityService
+	) {
 		this.propertyRepository = propertyRepository;
+		this.propertyFacilityService = propertyFacilityService;
 	}
 
 	/**
@@ -61,7 +68,10 @@ public class PropertyService {
 		return PropertyResponse.from(propertyRepository.save(property));
 	}
 
-	/** 수정. 게시 상태도 여기서 바꿉니다. 없는 항목이면 BusinessException. */
+	/**
+	 * 수정. 게시 상태와 체크된 시설도 여기서 바꿉니다.
+	 * 없는 항목이거나 사용할 수 없는 시설 코드가 있으면 BusinessException (전부 취소).
+	 */
 	@Transactional
 	public PropertyResponse update(Long id, PropertyUpdateRequest request) {
 		Property property = findOrThrow(id);
@@ -70,6 +80,8 @@ public class PropertyService {
 				request.description(),
 				request.status()
 		);
+		propertyFacilityService.sync(request.facilityCodes());
+
 		// 수정일시(updatedAt)는 반영되는 순간에 채워지므로, 응답에 새 값을 담으려고 먼저 반영합니다.
 		propertyRepository.flush();
 		return PropertyResponse.from(property);
