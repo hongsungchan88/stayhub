@@ -12,6 +12,7 @@ import com.stayhub.account.dto.LoginUser;
 import com.stayhub.account.entity.User;
 import com.stayhub.account.entity.UserRole;
 import com.stayhub.account.repository.UserRepository;
+import com.stayhub.account.service.LoginSessionManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -48,6 +49,9 @@ class AuthApiTest {
 
 	@Autowired
 	private PasswordEncoder passwordEncoder;
+
+	@Autowired
+	private LoginSessionManager loginSessionManager;
 
 	@BeforeEach
 	void setUp() {
@@ -108,6 +112,18 @@ class AuthApiTest {
 				.andExpect(status().isUnauthorized());
 		mockMvc.perform(get("/api/rooms").session(second))
 				.andExpect(status().isOk());
+	}
+
+	@Test
+	@DisplayName("사용자 세션을 끊으면(비밀번호 재설정 후, ACC-003) 그 세션으로는 401")
+	void invalidateUserSessionThen401() throws Exception {
+		MockHttpSession session = login(new MockHttpSession());
+		Long userId = ((LoginUser) session.getAttribute(LoginUser.SESSION_KEY)).userId();
+
+		loginSessionManager.invalidate(userId);
+
+		mockMvc.perform(get("/api/rooms").session(session))
+				.andExpect(status().isUnauthorized());
 	}
 
 	@Test

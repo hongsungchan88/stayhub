@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>{@link #start} — 기존 세션을 버리고 새 세션을 만들어 {@link LoginUser} 를 넣습니다(세션 고정 공격 방지).
  *       같은 계정이 이미 다른 곳에서 로그인해 있으면 그 세션을 끊습니다(계정당 1세션)</li>
+ *   <li>{@link #invalidate} — 특정 사용자의 세션을 끊습니다(비밀번호 재설정 후 기존 세션 만료, ACC-003)</li>
  *   <li>{@link #sessionDestroyed} — 로그아웃·30분 만료로 세션이 없어지면 목록에서 지웁니다</li>
  * </ul>
  *
@@ -43,6 +44,17 @@ public class LoginSessionManager implements HttpSessionListener {
 		HttpSession previous = sessions.put(loginUser.userId(), newSession);
 		if (previous != null && previous != newSession) {
 			invalidateQuietly(previous);
+		}
+	}
+
+	/**
+	 * 이 사용자의 세션을 끊습니다. 로그인해 있지 않으면 아무 일도 하지 않습니다.
+	 * 비밀번호 재설정(ACC-003)이 끝난 뒤 부르세요. 끊긴 세션으로 요청하면 401 이 납니다.
+	 */
+	public void invalidate(Long userId) {
+		HttpSession session = sessions.remove(userId);
+		if (session != null) {
+			invalidateQuietly(session);
 		}
 	}
 
