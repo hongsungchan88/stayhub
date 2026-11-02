@@ -90,7 +90,7 @@ public class User extends BaseEntity {
 
 	/** 이메일 인증 완료 여부. 필드명은 {@code verified}, getter 는 Lombok 규칙대로 {@code isVerified()} 입니다. */
 	@ColumnDefault("false")
-	@Column(name = "is_verified", nullable = false)
+	@Column(name = "is_verified", nullable = false, columnDefinition = "BOOLEAN") // 빼면 bit(1) 로 만들어집니다
 	private boolean verified;
 
 	@ColumnDefault("0")

@@ -1,3 +1,14 @@
+server:
+  servlet:
+    session:
+      # 30분 동안 요청이 없으면 세션이 끝나 다시 로그인해야 합니다. (정책정의서 "세션 만료")
+      timeout: 30m
+      cookie:
+        # 자바스크립트에서 세션 쿠키를 읽지 못하게 합니다(XSS 로 세션을 훔치는 것 방지).
+        http-only: true
+        # 다른 사이트에서 보낸 POST 에는 쿠키를 붙이지 않습니다(CSRF 완화). 링크 클릭 이동은 허용.
+        same-site: lax
+
 spring:
   # 실행할 프로파일. local 이면 application-local.yml 을 함께 읽습니다.
   profiles:
