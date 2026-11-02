@@ -26,6 +26,7 @@ import org.hibernate.annotations.ColumnDefault;
  * <ul>
  *   <li>새로 만들 때 — {@link #create}</li>
  *   <li>고칠 때 — {@link #update}</li>
+ *   <li>발행 상태를 바꿀 때 — {@link #markIssued}, {@link #markFailed}, {@link #retry}</li>
  * </ul>
  * 삭제 기능은 없습니다.
  *
@@ -111,5 +112,23 @@ public class TaxInvoice extends BaseEntity {
 		this.businessName = businessName;
 		this.customerIdNumber = customerIdNumber;
 		this.errorNote = errorNote;
+	}
+
+	/** 발행 완료. 발행 일시를 남기고 이전 오류 내역을 지웁니다. (PAY-004) */
+	public void markIssued() {
+		this.issueStatus = TaxInvoiceIssueStatus.ISSUED;
+		this.issuedAt = LocalDateTime.now();
+		this.errorNote = null;
+	}
+
+	/** 발행 실패. 오류 내역을 남깁니다. (PAY-004) */
+	public void markFailed(String errorNote) {
+		this.issueStatus = TaxInvoiceIssueStatus.FAILED;
+		this.errorNote = errorNote;
+	}
+
+	/** 발행 재시도. 다시 발행 요청 상태로 돌립니다. 오류 내역은 다음 결과가 나올 때까지 남겨 둡니다. (PAY-004) */
+	public void retry() {
+		this.issueStatus = TaxInvoiceIssueStatus.REQUESTED;
 	}
 }
