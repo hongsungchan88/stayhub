@@ -5,7 +5,7 @@ import com.stayhub.room.entity.RoomStatusLog;
 import java.time.LocalDateTime;
 
 /**
- * 객실 상태 변경 이력 응답 (목록·상세·등록·수정이 모두 이 모양으로 나갑니다).
+ * 객실 상태 변경 이력 응답 (목록·상세가 모두 이 모양으로 나갑니다).
  *
  * <p>roomId·changedBy 는 화면에 필요한 참조 ID 라서 넣습니다.
  * 변환({@link #from})은 서비스 안에서 호출합니다. 컨트롤러는 엔티티를 만지지 않습니다.

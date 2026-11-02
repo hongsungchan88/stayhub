@@ -21,12 +21,7 @@ import org.hibernate.annotations.ColumnDefault;
  * <br>객실 상태 변경 이벤트가 생길 때마다의 변경 이력과 동시 변경 충돌 여부를 담습니다. (ROM-001)
  * {@code created_at} / {@code updated_at} 은 {@link BaseEntity} 를 상속해서 자동으로 채워집니다.
  *
- * <p>값을 바꾸는 방법은 아래 메서드뿐입니다.
- * <ul>
- *   <li>새로 만들 때 — {@link #create}</li>
- *   <li>고칠 때 — {@link #update}</li>
- * </ul>
- * 삭제 기능은 없습니다.
+ * <p>새로 만들 때는 {@link #create} 를 씁니다. 이력이라 한번 남기면 고치거나 삭제하지 않습니다.
  *
  * <p><b>필드명 규칙</b> — 자기 PK 는 {@code id}, 다른 테이블을 가리키는 값은 {@code xxxId}.
  * 예) {@code roomId}(rooms), {@code changedBy}(users)
@@ -88,23 +83,6 @@ public class RoomStatusLog extends BaseEntity {
 		roomStatusLog.changedBy = changedBy;
 		roomStatusLog.isConflict = defaultIsConflict(isConflict);
 		return roomStatusLog;
-	}
-
-	/** 내용을 고칩니다. */
-	public void update(
-			Long roomId,
-			RoomStatus previousStatus,
-			RoomStatus newStatus,
-			String changeReason,
-			Long changedBy,
-			Boolean isConflict
-	) {
-		this.roomId = roomId;
-		this.previousStatus = previousStatus;
-		this.newStatus = newStatus;
-		this.changeReason = changeReason;
-		this.changedBy = changedBy;
-		this.isConflict = defaultIsConflict(isConflict);
 	}
 
 	/** 정의서의 "기본 FALSE" — 비어 있으면 false 를 넣습니다. */

@@ -2,9 +2,7 @@ package com.stayhub.room.service;
 
 import com.stayhub.common.BusinessException;
 import com.stayhub.common.PageResponse;
-import com.stayhub.room.dto.RoomStatusLogCreateRequest;
 import com.stayhub.room.dto.RoomStatusLogResponse;
-import com.stayhub.room.dto.RoomStatusLogUpdateRequest;
 import com.stayhub.room.entity.RoomStatusLog;
 import com.stayhub.room.repository.RoomStatusLogRepository;
 import org.springframework.data.domain.PageRequest;
@@ -16,10 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 객실 상태 변경 이력 업무 로직.
  *
- * <p>컨트롤러에게 요청 DTO 를 받아 엔티티를 만들거나 고치고, 결과를 응답 DTO 로 바꿔 돌려줍니다.
- * 엔티티는 이 클래스 밖으로 나가지 않습니다.
+ * <p>이력을 조회해 응답 DTO 로 바꿔 돌려줍니다. 엔티티는 이 클래스 밖으로 나가지 않습니다.
+ * 이력은 {@code RoomService.changeStatus} 가 자동으로 남기므로, 여기에는 등록·수정 메서드가 없습니다.
  *
- * <p><b>트랜잭션 규칙</b> — 클래스에 {@code @Transactional(readOnly = true)}, 쓰기 메서드(등록·수정)에만 {@code @Transactional}.
+ * <p><b>트랜잭션 규칙</b> — 조회만 있어서 클래스의 {@code @Transactional(readOnly = true)} 로 충분합니다.
  */
 @Service
 @Transactional(readOnly = true)
@@ -49,38 +47,6 @@ public class RoomStatusLogService {
 	/** 상세. 없는 항목이면 BusinessException. */
 	public RoomStatusLogResponse getDetail(Long id) {
 		return RoomStatusLogResponse.from(findOrThrow(id));
-	}
-
-	/** 등록. */
-	@Transactional
-	public RoomStatusLogResponse create(RoomStatusLogCreateRequest request) {
-		RoomStatusLog roomStatusLog = RoomStatusLog.create(
-				request.roomId(),
-				request.previousStatus(),
-				request.newStatus(),
-				request.changeReason(),
-				request.changedBy(),
-				request.isConflict()
-		);
-		return RoomStatusLogResponse.from(roomStatusLogRepository.save(roomStatusLog));
-	}
-
-	/** 수정. 없는 항목이면 BusinessException. */
-	@Transactional
-	public RoomStatusLogResponse update(Long id, RoomStatusLogUpdateRequest request) {
-		RoomStatusLog roomStatusLog = findOrThrow(id);
-		roomStatusLog.update(
-				request.roomId(),
-				request.previousStatus(),
-				request.newStatus(),
-				request.changeReason(),
-				request.changedBy(),
-				request.isConflict()
-		);
-		// save() 를 부르지 않아도 트랜잭션이 끝날 때 바뀐 값이 자동으로 DB 에 반영됩니다. (변경 감지)
-		// 다만 수정일시(updatedAt)는 반영되는 순간에 채워지므로, 응답에 새 값을 담으려고 먼저 반영합니다.
-		roomStatusLogRepository.flush();
-		return RoomStatusLogResponse.from(roomStatusLog);
 	}
 
 	/** 항목 하나를 찾습니다. 없으면 예외. */
