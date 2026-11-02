@@ -7,6 +7,9 @@
  * <ul>
  *   <li>{@code RoomRepository} — rooms 테이블 조회</li>
  *   <li>{@code RoomStatusLogRepository} — room_status_logs 테이블 조회</li>
+ *   <li>{@code HousekeepingTaskRepository} — housekeeping_tasks 테이블 조회</li>
+ *   <li>{@code PriceRuleRepository} — price_rules 테이블 조회 (v2 이관)</li>
+ *   <li>{@code DailyRoomRateRepository} — daily_room_rates 테이블 조회 (v2 이관)</li>
  * </ul>
  */
 package com.stayhub.room.repository;

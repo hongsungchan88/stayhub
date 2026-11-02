@@ -5,8 +5,9 @@
  *
  * <p>들어 있는 파일
  * <ul>
- *   <li>{@code RoomService} — 객실 업무 로직과 트랜잭션</li>
- *   <li>{@code RoomStatusLogService} — 객실 상태 변경 이력 업무 로직과 트랜잭션</li>
+ *   <li>{@code RoomService} — 객실 업무 로직과 트랜잭션. 객실 상태 변경의 유일한 입구</li>
+ *   <li>{@code RoomStatusLogService} — 객실 상태 변경 이력 조회</li>
+ *   <li>{@code HousekeepingTaskService} — 청소/점검 작업 업무 로직과 트랜잭션</li>
  * </ul>
  */
 package com.stayhub.room.service;
