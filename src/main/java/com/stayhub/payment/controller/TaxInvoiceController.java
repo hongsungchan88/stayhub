@@ -4,6 +4,7 @@ import com.stayhub.common.ApiResponse;
 import com.stayhub.common.PageResponse;
 import com.stayhub.payment.dto.TaxInvoiceCreateRequest;
 import com.stayhub.payment.dto.TaxInvoiceResponse;
+import com.stayhub.payment.dto.TaxInvoiceStatusChangeRequest;
 import com.stayhub.payment.dto.TaxInvoiceUpdateRequest;
 import com.stayhub.payment.service.TaxInvoiceService;
 import jakarta.validation.Valid;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
  * GET    /api/tax-invoices/{id}     상세
  * POST   /api/tax-invoices          등록
  * PUT    /api/tax-invoices/{id}     수정
+ * PUT    /api/tax-invoices/{id}/status  발행 상태 변경
  * </pre>
  * 삭제 기능이 없는 테이블이라 DELETE API 는 없습니다.
  */
@@ -63,5 +65,13 @@ public class TaxInvoiceController {
 			@Valid @RequestBody TaxInvoiceUpdateRequest request
 	) {
 		return ApiResponse.success(taxInvoiceService.update(id, request));
+	}
+
+	@PutMapping("/{id}/status")
+	public ApiResponse<TaxInvoiceResponse> changeStatus(
+			@PathVariable Long id,
+			@Valid @RequestBody TaxInvoiceStatusChangeRequest request
+	) {
+		return ApiResponse.success(taxInvoiceService.changeStatus(id, request));
 	}
 }
