@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
@@ -81,6 +82,14 @@ public class Room extends BaseEntity {
 	@ColumnDefault("1") // 정의서의 "기본 1"
 	@Column(name = "max_occupancy", nullable = false)
 	private int maxOccupancy;
+
+	/**
+	 * 동시 변경을 막는 버전 번호(정책 40행). 값은 JPA 가 저장할 때마다 올립니다. 직접 바꾸지 않습니다.
+	 * 두 사람이 거의 동시에 같은 객실을 바꾸면 나중 쪽은 ObjectOptimisticLockingFailureException 으로 실패합니다.
+	 */
+	@Version
+	@Column(name = "version", nullable = false)
+	private Long version;
 
 	/**
 	 * 새 객실을 만듭니다. 상태는 항상 VACANT 로 시작합니다.

@@ -104,12 +104,20 @@ public class RoomService {
 	/**
 	 * 객실 상태 변경 (ROM-001). 바꿀 때마다 room_status_logs 에 이력을 남깁니다.
 	 *
+	 * <p><b>객실 상태를 바꾸는 유일한 입구입니다.</b> 체크아웃·청소 완료 등 객실 상태가 바뀌는 곳은 모두
+	 * 이 메서드를 호출합니다. {@code Room.changeStatus} 를 직접 부르면 이력과 충돌 확인이 빠집니다.
+	 *
 	 * <p><b>동시 변경 충돌</b> — 요청의 previousStatus(화면이 보고 있던 상태)가 DB 의 실제 상태와 다르면
 	 * 그 사이 다른 담당자가 먼저 바꾼 것입니다. 이때는 is_conflict=TRUE 이력만 남기고 상태는 바꾸지 않은 채 반려합니다.
+	 *
+	 * <p>두 요청이 거의 동시에 들어와 둘 다 위 비교를 통과하면 {@code @Version} 이 나중 요청을 막습니다.
+	 * ObjectOptimisticLockingFailureException 이 나서 트랜잭션 전체가 되돌려지므로(응답 409)
+	 * 이 경우에는 충돌 이력이 남지 않습니다.
 	 *
 	 * <p>{@code noRollbackFor} — 반려할 때 BusinessException 을 던지면 보통 트랜잭션 전체가 되돌려져
 	 * 충돌 이력까지 사라집니다. 충돌 이력은 남겨야 하므로 이 예외로는 되돌리지 않게 합니다.
 	 * 반려되는 경우 이 메서드가 DB 에 쓰는 것은 충돌 이력 한 줄뿐입니다.
+	 * 충돌 이력을 남기기 위해 이 메서드에서만 허용합니다. 다른 곳에는 쓰지 마세요.
 	 */
 	@Transactional(noRollbackFor = BusinessException.class)
 	public RoomResponse changeStatus(Long id, RoomStatusChangeRequest request) {
