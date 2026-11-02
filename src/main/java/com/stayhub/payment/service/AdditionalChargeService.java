@@ -6,7 +6,9 @@ import com.stayhub.payment.dto.AdditionalChargeCreateRequest;
 import com.stayhub.payment.dto.AdditionalChargeResponse;
 import com.stayhub.payment.dto.AdditionalChargeUpdateRequest;
 import com.stayhub.payment.entity.AdditionalCharge;
+import com.stayhub.payment.entity.Payment;
 import com.stayhub.payment.repository.AdditionalChargeRepository;
+import com.stayhub.payment.repository.PaymentRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -31,9 +33,11 @@ public class AdditionalChargeService {
 	);
 
 	private final AdditionalChargeRepository additionalChargeRepository;
+	private final PaymentRepository paymentRepository;
 
-	public AdditionalChargeService(AdditionalChargeRepository additionalChargeRepository) {
+	public AdditionalChargeService(AdditionalChargeRepository additionalChargeRepository, PaymentRepository paymentRepository) {
 		this.additionalChargeRepository = additionalChargeRepository;
+		this.paymentRepository = paymentRepository;
 	}
 
 	/**
@@ -51,9 +55,11 @@ public class AdditionalChargeService {
 		return AdditionalChargeResponse.from(findOrThrow(id));
 	}
 
-	/** 등록. */
+	/** 등록. 합산 정보가 맞지 않으면 BusinessException. */
 	@Transactional
 	public AdditionalChargeResponse create(AdditionalChargeCreateRequest request) {
+		validateMerge(request.reservationId(), request.isMerged(), request.paymentId());
+
 		AdditionalCharge additionalCharge = AdditionalCharge.create(
 				request.reservationId(),
 				request.chargeType(),
@@ -66,10 +72,12 @@ public class AdditionalChargeService {
 		return AdditionalChargeResponse.from(additionalChargeRepository.save(additionalCharge));
 	}
 
-	/** 수정. 없는 항목이면 BusinessException. */
+	/** 수정. 없는 항목이거나 합산 정보가 맞지 않으면 BusinessException. */
 	@Transactional
 	public AdditionalChargeResponse update(Long id, AdditionalChargeUpdateRequest request) {
 		AdditionalCharge additionalCharge = findOrThrow(id);
+		validateMerge(request.reservationId(), request.isMerged(), request.paymentId());
+
 		additionalCharge.update(
 				request.reservationId(),
 				request.chargeType(),
@@ -83,6 +91,27 @@ public class AdditionalChargeService {
 		// 다만 수정일시(updatedAt)는 반영되는 순간에 채워지므로, 응답에 새 값을 담으려고 먼저 반영합니다.
 		additionalChargeRepository.flush();
 		return AdditionalChargeResponse.from(additionalCharge);
+	}
+
+	/**
+	 * 합산 정보를 확인합니다 (PAY-002). 합산하면 같은 예약의 결제를 지정해야 하고, 합산하지 않으면 결제를 지정할 수 없습니다.
+	 * 이 확인이 없으면 다른 예약의 결제 합계에 금액이 더해질 수 있습니다.
+	 */
+	private void validateMerge(Long reservationId, Boolean isMerged, Long paymentId) {
+		if (!Boolean.TRUE.equals(isMerged)) {
+			if (paymentId != null) {
+				throw new BusinessException("합산하지 않는 추가 요금에는 결제를 지정할 수 없습니다.");
+			}
+			return;
+		}
+		if (paymentId == null) {
+			throw new BusinessException("합산할 결제를 선택해 주세요.");
+		}
+		Payment payment = paymentRepository.findById(paymentId)
+				.orElseThrow(() -> new BusinessException("합산할 결제 내역을 찾을 수 없습니다."));
+		if (!payment.getReservationId().equals(reservationId)) {
+			throw new BusinessException("같은 예약의 결제에만 합산할 수 있습니다.");
+		}
 	}
 
 	/** 항목 하나를 찾습니다. 없으면 예외. */

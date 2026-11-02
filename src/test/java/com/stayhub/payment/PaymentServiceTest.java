@@ -5,11 +5,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.stayhub.common.BusinessException;
 import com.stayhub.common.PageResponse;
+import com.stayhub.payment.dto.AdditionalChargeCreateRequest;
 import com.stayhub.payment.dto.PaymentCreateRequest;
 import com.stayhub.payment.dto.PaymentResponse;
+import com.stayhub.payment.dto.PaymentTotalResponse;
 import com.stayhub.payment.dto.PaymentUpdateRequest;
+import com.stayhub.payment.entity.AdditionalChargeType;
 import com.stayhub.payment.entity.PaymentStatus;
 import com.stayhub.payment.repository.PaymentRepository;
+import com.stayhub.payment.service.AdditionalChargeService;
 import com.stayhub.payment.service.PaymentService;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +39,9 @@ class PaymentServiceTest {
 
 	@Autowired
 	private PaymentRepository paymentRepository;
+
+	@Autowired
+	private AdditionalChargeService additionalChargeService;
 
 	@BeforeEach
 	void setUp() {
@@ -85,6 +92,47 @@ class PaymentServiceTest {
 		assertThatThrownBy(() -> paymentService.getDetail(99999L))
 				.isInstanceOf(BusinessException.class)
 				.hasMessage("결제 내역을 찾을 수 없습니다.");
+	}
+
+	@Test
+	@DisplayName("결제 합계는 합산된 추가 요금만 더하고 결제 금액은 바꾸지 않는다")
+	void totalAddsOnlyMergedCharges() {
+		PaymentResponse payment = paymentService.create(createRequest(1L));
+		additionalChargeService.create(chargeRequest("4000.00", true, payment.id()));
+		additionalChargeService.create(chargeRequest("30000.00", true, payment.id()));
+		additionalChargeService.create(chargeRequest("7000.00", false, null)); // 별도 청구
+
+		PaymentTotalResponse total = paymentService.getTotal(payment.id());
+
+		assertThat(total.paymentAmount()).isEqualByComparingTo("100000.00");
+		assertThat(total.mergedChargeAmount()).isEqualByComparingTo("34000.00");
+		assertThat(total.totalAmount()).isEqualByComparingTo("134000.00");
+		assertThat(paymentService.getDetail(payment.id()).paymentAmount()).isEqualByComparingTo("100000.00");
+	}
+
+	@Test
+	@DisplayName("합산된 추가 요금이 없으면 결제 합계는 결제 금액과 같다")
+	void totalWithoutMergedCharges() {
+		PaymentResponse payment = paymentService.create(createRequest(1L));
+
+		PaymentTotalResponse total = paymentService.getTotal(payment.id());
+
+		assertThat(total.mergedChargeAmount()).isEqualByComparingTo("0");
+		assertThat(total.totalAmount()).isEqualByComparingTo("100000.00");
+	}
+
+	@Test
+	@DisplayName("없는 결제의 합계를 조회하면 BusinessException 이 난다")
+	void totalOfMissingThrows() {
+		assertThatThrownBy(() -> paymentService.getTotal(99999L))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("결제 내역을 찾을 수 없습니다.");
+	}
+
+	/** 예약 1번에 대한 테스트용 추가 요금 등록 요청. */
+	private AdditionalChargeCreateRequest chargeRequest(String amount, Boolean isMerged, Long paymentId) {
+		return new AdditionalChargeCreateRequest(
+				1L, AdditionalChargeType.MINIBAR, "생수 2병", new BigDecimal(amount), isMerged, paymentId, null);
 	}
 
 	/** 테스트용 등록 요청. 채널·수단·금액은 테스트마다 중요하지 않아 고정값으로 두고, 수수료·실매출은 비웁니다. */

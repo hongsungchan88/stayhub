@@ -4,9 +4,13 @@ import com.stayhub.common.BusinessException;
 import com.stayhub.common.PageResponse;
 import com.stayhub.payment.dto.PaymentCreateRequest;
 import com.stayhub.payment.dto.PaymentResponse;
+import com.stayhub.payment.dto.PaymentTotalResponse;
 import com.stayhub.payment.dto.PaymentUpdateRequest;
+import com.stayhub.payment.entity.AdditionalCharge;
 import com.stayhub.payment.entity.Payment;
+import com.stayhub.payment.repository.AdditionalChargeRepository;
 import com.stayhub.payment.repository.PaymentRepository;
+import java.math.BigDecimal;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -31,9 +35,11 @@ public class PaymentService {
 	);
 
 	private final PaymentRepository paymentRepository;
+	private final AdditionalChargeRepository additionalChargeRepository;
 
-	public PaymentService(PaymentRepository paymentRepository) {
+	public PaymentService(PaymentRepository paymentRepository, AdditionalChargeRepository additionalChargeRepository) {
 		this.paymentRepository = paymentRepository;
+		this.additionalChargeRepository = additionalChargeRepository;
 	}
 
 	/**
@@ -49,6 +55,25 @@ public class PaymentService {
 	/** 상세. 없는 항목이면 BusinessException. */
 	public PaymentResponse getDetail(Long id) {
 		return PaymentResponse.from(findOrThrow(id));
+	}
+
+	/**
+	 * 결제 합계 (PAY-002). 결제 금액에 이 결제로 합산된 추가 요금을 더해 돌려줍니다. 없는 항목이면 BusinessException.
+	 *
+	 * <p>{@code payment_amount} 는 바꾸지 않고 조회할 때 계산합니다. 수수료·실매출은 결제 금액을 기준으로 저장된 값이라,
+	 * 결제 금액을 직접 늘리면 그 값들과 어긋납니다.
+	 */
+	public PaymentTotalResponse getTotal(Long id) {
+		Payment payment = findOrThrow(id);
+		BigDecimal mergedChargeAmount = additionalChargeRepository.findByPaymentIdAndIsMergedTrue(id).stream()
+				.map(AdditionalCharge::getAmount)
+				.reduce(BigDecimal.ZERO, BigDecimal::add);
+		return new PaymentTotalResponse(
+				id,
+				payment.getPaymentAmount(),
+				mergedChargeAmount,
+				payment.getPaymentAmount().add(mergedChargeAmount)
+		);
 	}
 
 	/** 등록. */
