@@ -3,6 +3,7 @@ package com.stayhub.payment;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.stayhub.channel.repository.ChannelRepository;
 import com.stayhub.common.BusinessException;
 import com.stayhub.common.PageResponse;
 import com.stayhub.payment.dto.AdditionalChargeCreateRequest;
@@ -43,6 +44,9 @@ class PaymentServiceTest {
 	@Autowired
 	private AdditionalChargeService additionalChargeService;
 
+	@Autowired
+	private ChannelRepository channelRepository;
+
 	@BeforeEach
 	void setUp() {
 		// 개발 DB 에 이미 들어 있는 데이터 때문에 결과가 흔들리지 않도록 테스트 안에서만 비웁니다.
@@ -59,10 +63,8 @@ class PaymentServiceTest {
 		PageResponse<PaymentResponse> all = paymentService.getList(0);
 		assertThat(all.content()).extracting(PaymentResponse::id).containsExactly(created.id());
 
-		// 상태는 COMPLETED, 비워 보낸 수수료·실매출은 0, 환불 값은 비어 있다
+		// 상태는 COMPLETED, 환불 값은 비어 있다
 		assertThat(created.paymentStatus()).isEqualTo(PaymentStatus.COMPLETED);
-		assertThat(created.commissionAmount()).isEqualByComparingTo("0");
-		assertThat(created.netRevenue()).isEqualByComparingTo("0");
 		assertThat(created.refundAmount()).isNull();
 		assertThat(created.refundRuleApplied()).isNull();
 	}
@@ -71,14 +73,14 @@ class PaymentServiceTest {
 	@DisplayName("수정하면 바뀐 값이 조회된다")
 	void updateIsApplied() {
 		PaymentResponse created = paymentService.create(createRequest(1L));
+		Long channelId = ChannelFixture.save(channelRepository, "10.00", true).getId();
 
 		paymentService.update(created.id(), new PaymentUpdateRequest(
-				2L, 3L, "현장 결제", new BigDecimal("200000.00"),
-				new BigDecimal("20000.00"), new BigDecimal("180000.00"), "중복 결제 확인 요청"));
+				2L, channelId, "현장 결제", new BigDecimal("200000.00"), "중복 결제 확인 요청"));
 
 		PaymentResponse found = paymentService.getDetail(created.id());
 		assertThat(found.reservationId()).isEqualTo(2L);
-		assertThat(found.channelId()).isEqualTo(3L);
+		assertThat(found.channelId()).isEqualTo(channelId);
 		assertThat(found.paymentMethod()).isEqualTo("현장 결제");
 		assertThat(found.paymentAmount()).isEqualByComparingTo("200000.00");
 		assertThat(found.commissionAmount()).isEqualByComparingTo("20000.00");
@@ -92,6 +94,61 @@ class PaymentServiceTest {
 		assertThatThrownBy(() -> paymentService.getDetail(99999L))
 				.isInstanceOf(BusinessException.class)
 				.hasMessage("결제 내역을 찾을 수 없습니다.");
+	}
+
+	@Test
+	@DisplayName("등록 채널은 채널 수수료율로 수수료·실매출을 계산한다")
+	void registeredChannelUsesCommissionRate() {
+		Long channelId = ChannelFixture.save(channelRepository, "15.00", true).getId();
+
+		PaymentResponse created = paymentService.create(paymentRequest(channelId, "100000.00"));
+
+		assertThat(created.commissionAmount()).isEqualByComparingTo("15000.00");
+		assertThat(created.netRevenue()).isEqualByComparingTo("85000.00");
+	}
+
+	@Test
+	@DisplayName("미등록 채널은 기본 수수료율 10% 로 계산한다")
+	void unregisteredChannelUsesDefaultRate() {
+		Long channelId = ChannelFixture.save(channelRepository, "15.00", false).getId();
+
+		PaymentResponse created = paymentService.create(paymentRequest(channelId, "100000.00"));
+
+		assertThat(created.commissionAmount()).isEqualByComparingTo("10000.00");
+		assertThat(created.netRevenue()).isEqualByComparingTo("90000.00");
+	}
+
+	@Test
+	@DisplayName("수수료는 소수 셋째 자리에서 반올림한다")
+	void commissionIsRounded() {
+		Long channelId = ChannelFixture.save(channelRepository, "3.33", true).getId();
+
+		PaymentResponse created = paymentService.create(paymentRequest(channelId, "33333.33"));
+
+		// 33333.33 x 3.33% = 1109.998889
+		assertThat(created.commissionAmount()).isEqualByComparingTo("1110.00");
+		assertThat(created.netRevenue()).isEqualByComparingTo("32223.33");
+	}
+
+	@Test
+	@DisplayName("수정하면 바뀐 금액·채널로 수수료·실매출을 다시 계산한다")
+	void updateRecalculatesCommission() {
+		PaymentResponse created = paymentService.create(createRequest(1L));
+		Long channelId = ChannelFixture.save(channelRepository, "20.00", true).getId();
+
+		PaymentResponse updated = paymentService.update(created.id(), new PaymentUpdateRequest(
+				1L, channelId, "사전 결제", new BigDecimal("200000.00"), null));
+
+		assertThat(updated.commissionAmount()).isEqualByComparingTo("40000.00");
+		assertThat(updated.netRevenue()).isEqualByComparingTo("160000.00");
+	}
+
+	@Test
+	@DisplayName("없는 채널로 등록하면 BusinessException 이 난다")
+	void missingChannelThrows() {
+		assertThatThrownBy(() -> paymentService.create(paymentRequest(99999L, "100000.00")))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("예약 채널을 찾을 수 없습니다.");
 	}
 
 	@Test
@@ -135,9 +192,14 @@ class PaymentServiceTest {
 				1L, AdditionalChargeType.MINIBAR, "생수 2병", new BigDecimal(amount), isMerged, paymentId, null);
 	}
 
-	/** 테스트용 등록 요청. 채널·수단·금액은 테스트마다 중요하지 않아 고정값으로 두고, 수수료·실매출은 비웁니다. */
+	/** 테스트용 등록 요청. 채널(수수료율 10%)·수단·금액은 테스트마다 중요하지 않아 고정값으로 둡니다. */
 	private PaymentCreateRequest createRequest(Long reservationId) {
-		return new PaymentCreateRequest(
-				reservationId, 1L, "사전 결제", new BigDecimal("100000.00"), null, null, null);
+		Long channelId = ChannelFixture.save(channelRepository, "10.00", true).getId();
+		return new PaymentCreateRequest(reservationId, channelId, "사전 결제", new BigDecimal("100000.00"), null);
+	}
+
+	/** 채널·금액만 다른 테스트용 등록 요청. */
+	private PaymentCreateRequest paymentRequest(Long channelId, String amount) {
+		return new PaymentCreateRequest(1L, channelId, "사전 결제", new BigDecimal(amount), null);
 	}
 }
