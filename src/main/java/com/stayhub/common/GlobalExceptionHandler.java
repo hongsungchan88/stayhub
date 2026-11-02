@@ -26,6 +26,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
  * <p>응답 코드
  * <ul>
  *   <li>400 — 요청이 잘못됨 (업무 규칙 위반, 검증 실패, 값 형식 오류, JSON 오류, 필수 파라미터 누락)</li>
+ *   <li>401 — 로그인하지 않고 {@code /api/**} 를 호출함 (로그인·회원가입 API 제외)</li>
  *   <li>404 — 없는 주소 (favicon.ico 등). ERROR 로그를 남기지 않습니다</li>
  *   <li>405 — 주소는 맞는데 그 주소가 받지 않는 요청 방식 (예: DELETE API 가 없는 테이블에 DELETE)</li>
  *   <li>409 — 두 사람이 거의 동시에 같은 데이터를 바꿔 나중 요청이 실패함 ({@code @Version} 충돌)</li>
@@ -121,6 +122,25 @@ public class GlobalExceptionHandler {
 		return ResponseEntity
 				.status(HttpStatus.BAD_REQUEST)
 				.body(ApiResponse.error(e.getParameterName() + " 값이 필요합니다."));
+	}
+
+	/**
+	 * 로그인하지 않은 요청. 401.
+	 *
+	 * <p>이런 요청일 때 납니다.
+	 * <ul>
+	 *   <li>로그인하지 않고 {@code /api/**} 호출 — 예) {@code curl http://localhost:8080/api/rooms}</li>
+	 *   <li>세션이 끝난 뒤 호출 — 30분 미활동 만료, 로그아웃, 같은 계정이 다른 곳에서 로그인</li>
+	 *   <li>curl 로 로그인은 했지만 다음 요청에 쿠키({@code -b})를 안 붙임</li>
+	 * </ul>
+	 * 응답은 "로그인이 필요합니다." 확인 방법은 docs/troubleshooting.md 를 보세요.
+	 */
+	@ExceptionHandler(UnauthorizedException.class)
+	public ResponseEntity<ApiResponse<Void>> handleUnauthorized(UnauthorizedException e) {
+		log.debug("로그인 필요: {}", e.getMessage());
+		return ResponseEntity
+				.status(HttpStatus.UNAUTHORIZED)
+				.body(ApiResponse.error(e.getMessage()));
 	}
 
 	/**
