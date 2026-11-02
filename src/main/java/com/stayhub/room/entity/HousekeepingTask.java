@@ -120,6 +120,14 @@ public class HousekeepingTask extends BaseEntity {
 		this.scheduledAt = scheduledAt;
 	}
 
+	/** 작업 상태를 바꿉니다. 완료로 바뀌면 완료 일시를 남깁니다. 순서 확인은 서비스에서 합니다. (ROM-003) */
+	public void changeStatus(HousekeepingTaskStatus newStatus) {
+		this.status = newStatus;
+		if (newStatus == HousekeepingTaskStatus.COMPLETED) {
+			this.completedAt = LocalDateTime.now();
+		}
+	}
+
 	/** 정의서의 기본값 "CLEANING" — 비어 있으면 CLEANING 을 넣습니다. */
 	private static HousekeepingTaskType defaultTaskType(HousekeepingTaskType taskType) {
 		return taskType == null ? HousekeepingTaskType.CLEANING : taskType;

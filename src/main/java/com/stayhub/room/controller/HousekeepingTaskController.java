@@ -4,6 +4,7 @@ import com.stayhub.common.ApiResponse;
 import com.stayhub.common.PageResponse;
 import com.stayhub.room.dto.HousekeepingTaskCreateRequest;
 import com.stayhub.room.dto.HousekeepingTaskResponse;
+import com.stayhub.room.dto.HousekeepingTaskStatusChangeRequest;
 import com.stayhub.room.dto.HousekeepingTaskUpdateRequest;
 import com.stayhub.room.service.HousekeepingTaskService;
 import jakarta.validation.Valid;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
  * GET    /api/housekeeping-tasks/{id}     상세
  * POST   /api/housekeeping-tasks          등록
  * PUT    /api/housekeeping-tasks/{id}     수정
+ * PUT    /api/housekeeping-tasks/{id}/status  작업 상태 변경
  * </pre>
  * 유형 ②(업무 상태 있음) 테이블이라 DELETE API 는 없습니다.
  */
@@ -63,5 +65,13 @@ public class HousekeepingTaskController {
 			@Valid @RequestBody HousekeepingTaskUpdateRequest request
 	) {
 		return ApiResponse.success(housekeepingTaskService.update(id, request));
+	}
+
+	@PutMapping("/{id}/status")
+	public ApiResponse<HousekeepingTaskResponse> changeStatus(
+			@PathVariable Long id,
+			@Valid @RequestBody HousekeepingTaskStatusChangeRequest request
+	) {
+		return ApiResponse.success(housekeepingTaskService.changeStatus(id, request));
 	}
 }
