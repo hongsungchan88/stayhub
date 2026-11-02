@@ -8,9 +8,11 @@ import com.stayhub.common.PageResponse;
 import com.stayhub.payment.dto.AdditionalChargeCreateRequest;
 import com.stayhub.payment.dto.AdditionalChargeResponse;
 import com.stayhub.payment.dto.AdditionalChargeUpdateRequest;
+import com.stayhub.payment.dto.PaymentCreateRequest;
 import com.stayhub.payment.entity.AdditionalChargeType;
 import com.stayhub.payment.repository.AdditionalChargeRepository;
 import com.stayhub.payment.service.AdditionalChargeService;
+import com.stayhub.payment.service.PaymentService;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -35,6 +37,9 @@ class AdditionalChargeServiceTest {
 
 	@Autowired
 	private AdditionalChargeRepository additionalChargeRepository;
+
+	@Autowired
+	private PaymentService paymentService;
 
 	@BeforeEach
 	void setUp() {
@@ -62,9 +67,10 @@ class AdditionalChargeServiceTest {
 	@DisplayName("수정하면 바뀐 값이 조회된다")
 	void updateIsApplied() {
 		AdditionalChargeResponse created = additionalChargeService.create(createRequest(AdditionalChargeType.MINIBAR));
+		Long paymentId = createPayment(2L);
 
 		additionalChargeService.update(created.id(), new AdditionalChargeUpdateRequest(
-				2L, AdditionalChargeType.LATE_CHECKOUT, "2시간 연장", new BigDecimal("30000.00"), true, 9L, true));
+				2L, AdditionalChargeType.LATE_CHECKOUT, "2시간 연장", new BigDecimal("30000.00"), true, paymentId, true));
 
 		AdditionalChargeResponse found = additionalChargeService.getDetail(created.id());
 		assertThat(found.reservationId()).isEqualTo(2L);
@@ -72,7 +78,7 @@ class AdditionalChargeServiceTest {
 		assertThat(found.description()).isEqualTo("2시간 연장");
 		assertThat(found.amount()).isEqualByComparingTo("30000.00");
 		assertThat(found.isMerged()).isTrue();
-		assertThat(found.paymentId()).isEqualTo(9L);
+		assertThat(found.paymentId()).isEqualTo(paymentId);
 		assertThat(found.isSettled()).isTrue();
 	}
 
@@ -82,6 +88,59 @@ class AdditionalChargeServiceTest {
 		assertThatThrownBy(() -> additionalChargeService.getDetail(99999L))
 				.isInstanceOf(BusinessException.class)
 				.hasMessage("추가 요금을 찾을 수 없습니다.");
+	}
+
+	@Test
+	@DisplayName("합산인데 결제를 지정하지 않으면 BusinessException 이 난다")
+	void mergeWithoutPaymentThrows() {
+		assertThatThrownBy(() -> additionalChargeService.create(mergeRequest(1L, true, null)))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("합산할 결제를 선택해 주세요.");
+	}
+
+	@Test
+	@DisplayName("합산하지 않는데 결제를 지정하면 BusinessException 이 난다")
+	void paymentWithoutMergeThrows() {
+		Long paymentId = createPayment(1L);
+
+		assertThatThrownBy(() -> additionalChargeService.create(mergeRequest(1L, false, paymentId)))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("합산하지 않는 추가 요금에는 결제를 지정할 수 없습니다.");
+	}
+
+	@Test
+	@DisplayName("없는 결제에 합산하면 BusinessException 이 난다")
+	void mergeToMissingPaymentThrows() {
+		assertThatThrownBy(() -> additionalChargeService.create(mergeRequest(1L, true, 99999L)))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("합산할 결제 내역을 찾을 수 없습니다.");
+	}
+
+	@Test
+	@DisplayName("다른 예약의 결제에 합산하면 등록·수정 모두 BusinessException 이 난다")
+	void mergeToOtherReservationThrows() {
+		Long otherPaymentId = createPayment(2L);
+		AdditionalChargeResponse created = additionalChargeService.create(createRequest(AdditionalChargeType.MINIBAR));
+
+		assertThatThrownBy(() -> additionalChargeService.create(mergeRequest(1L, true, otherPaymentId)))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("같은 예약의 결제에만 합산할 수 있습니다.");
+		assertThatThrownBy(() -> additionalChargeService.update(created.id(), new AdditionalChargeUpdateRequest(
+				1L, AdditionalChargeType.MINIBAR, "생수 2병", new BigDecimal("4000.00"), true, otherPaymentId, null)))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("같은 예약의 결제에만 합산할 수 있습니다.");
+	}
+
+	/** 테스트용 결제를 등록하고 ID 를 돌려줍니다. */
+	private Long createPayment(Long reservationId) {
+		return paymentService.create(new PaymentCreateRequest(
+				reservationId, 1L, "사전 결제", new BigDecimal("100000.00"), null, null, null)).id();
+	}
+
+	/** 합산 정보만 다른 테스트용 등록 요청. */
+	private AdditionalChargeCreateRequest mergeRequest(Long reservationId, Boolean isMerged, Long paymentId) {
+		return new AdditionalChargeCreateRequest(
+				reservationId, AdditionalChargeType.MINIBAR, "생수 2병", new BigDecimal("4000.00"), isMerged, paymentId, null);
 	}
 
 	/** 테스트용 등록 요청. 예약·금액은 고정값, 합산·정산 여부는 비워서 기본값을 씁니다. */

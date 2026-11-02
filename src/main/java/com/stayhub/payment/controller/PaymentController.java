@@ -4,6 +4,7 @@ import com.stayhub.common.ApiResponse;
 import com.stayhub.common.PageResponse;
 import com.stayhub.payment.dto.PaymentCreateRequest;
 import com.stayhub.payment.dto.PaymentResponse;
+import com.stayhub.payment.dto.PaymentTotalResponse;
 import com.stayhub.payment.dto.PaymentUpdateRequest;
 import com.stayhub.payment.service.PaymentService;
 import jakarta.validation.Valid;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <pre>
  * GET    /api/payments?page=0   목록 (page 는 생략 가능)
  * GET    /api/payments/{id}     상세
+ * GET    /api/payments/{id}/total  결제 합계 (결제 금액 + 합산된 추가 요금)
  * POST   /api/payments          등록
  * PUT    /api/payments/{id}     수정
  * </pre>
@@ -49,6 +51,11 @@ public class PaymentController {
 	@GetMapping("/{id}")
 	public ApiResponse<PaymentResponse> getDetail(@PathVariable Long id) {
 		return ApiResponse.success(paymentService.getDetail(id));
+	}
+
+	@GetMapping("/{id}/total")
+	public ApiResponse<PaymentTotalResponse> getTotal(@PathVariable Long id) {
+		return ApiResponse.success(paymentService.getTotal(id));
 	}
 
 	@PostMapping
