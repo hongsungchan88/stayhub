@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -27,6 +28,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
  *   <li>400 — 요청이 잘못됨 (업무 규칙 위반, 검증 실패, 값 형식 오류, JSON 오류, 필수 파라미터 누락)</li>
  *   <li>404 — 없는 주소 (favicon.ico 등). ERROR 로그를 남기지 않습니다</li>
  *   <li>405 — 주소는 맞는데 그 주소가 받지 않는 요청 방식 (예: DELETE API 가 없는 테이블에 DELETE)</li>
+ *   <li>409 — 두 사람이 거의 동시에 같은 데이터를 바꿔 나중 요청이 실패함 ({@code @Version} 충돌)</li>
  *   <li>415 — 요청 본문 형식이 JSON 이 아님 (Content-Type 누락 등)</li>
  *   <li>500 — 위에 해당하지 않는 나머지. 대개 코드 버그이고 ERROR 로그와 스택 트레이스를 남깁니다</li>
  * </ul>
@@ -157,6 +159,23 @@ public class GlobalExceptionHandler {
 		return ResponseEntity
 				.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
 				.body(ApiResponse.error("요청 형식이 올바르지 않습니다. Content-Type: application/json 을 확인해 주세요."));
+	}
+
+	/**
+	 * 두 사람이 거의 동시에 같은 데이터를 바꿔 {@code @Version} 이 충돌했을 때. 409.
+	 *
+	 * <p>이런 요청일 때 납니다.
+	 * <ul>
+	 *   <li>두 담당자가 같은 객실의 상태 변경을 거의 동시에 누름 — 먼저 끝난 쪽만 반영되고 나중 쪽이 실패합니다</li>
+	 * </ul>
+	 * 응답은 "다른 담당자가 먼저 객실 상태를 바꿨습니다. 새로고침 후 다시 시도해 주세요."
+	 */
+	@ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+	public ResponseEntity<ApiResponse<Void>> handleOptimisticLock(ObjectOptimisticLockingFailureException e) {
+		log.warn("동시 변경 충돌: {}", e.getMessage());
+		return ResponseEntity
+				.status(HttpStatus.CONFLICT)
+				.body(ApiResponse.error("다른 담당자가 먼저 객실 상태를 바꿨습니다. 새로고침 후 다시 시도해 주세요."));
 	}
 
 	/**

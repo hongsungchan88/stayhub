@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
@@ -27,6 +28,7 @@ import org.hibernate.annotations.ColumnDefault;
  * <ul>
  *   <li>새로 만들 때 — {@link #create}</li>
  *   <li>고칠 때 — {@link #update}</li>
+ *   <li>상태를 바꿀 때 — {@link #changeStatus}</li>
  * </ul>
  * 유형 ②(업무 상태 있음) 테이블이라 삭제 기능은 없습니다.
  *
@@ -82,6 +84,14 @@ public class Room extends BaseEntity {
 	private int maxOccupancy;
 
 	/**
+	 * 동시 변경을 막는 버전 번호(정책 40행). 값은 JPA 가 저장할 때마다 올립니다. 직접 바꾸지 않습니다.
+	 * 두 사람이 거의 동시에 같은 객실을 바꾸면 나중 쪽은 ObjectOptimisticLockingFailureException 으로 실패합니다.
+	 */
+	@Version
+	@Column(name = "version", nullable = false)
+	private Long version;
+
+	/**
 	 * 새 객실을 만듭니다. 상태는 항상 VACANT 로 시작합니다.
 	 *
 	 * @param maxOccupancy 비어 있으면 1
@@ -114,6 +124,13 @@ public class Room extends BaseEntity {
 		this.roomType = roomType;
 		this.basePrice = basePrice;
 		this.maxOccupancy = defaultMaxOccupancy(maxOccupancy);
+	}
+
+	/** 객실 상태를 바꾸고, 바꾼 담당자와 시각을 남깁니다. (ROM-001) */
+	public void changeStatus(RoomStatus newStatus, Long changedBy) {
+		this.status = newStatus;
+		this.statusUpdatedBy = changedBy;
+		this.statusUpdatedAt = LocalDateTime.now();
 	}
 
 	/** 정의서의 "기본 1" — 비어 있으면 1 을 넣습니다. */

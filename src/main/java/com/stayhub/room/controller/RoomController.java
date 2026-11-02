@@ -4,6 +4,7 @@ import com.stayhub.common.ApiResponse;
 import com.stayhub.common.PageResponse;
 import com.stayhub.room.dto.RoomCreateRequest;
 import com.stayhub.room.dto.RoomResponse;
+import com.stayhub.room.dto.RoomStatusChangeRequest;
 import com.stayhub.room.dto.RoomUpdateRequest;
 import com.stayhub.room.service.RoomService;
 import jakarta.validation.Valid;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
  * GET    /api/rooms/{id}     상세
  * POST   /api/rooms          등록
  * PUT    /api/rooms/{id}     수정
+ * PUT    /api/rooms/{id}/status   상태 변경 (ROM-001. 이력이 room_status_logs 에 남음)
  * </pre>
  * 유형 ②(업무 상태 있음) 테이블이라 DELETE API 는 없습니다.
  */
@@ -63,5 +65,13 @@ public class RoomController {
 			@Valid @RequestBody RoomUpdateRequest request
 	) {
 		return ApiResponse.success(roomService.update(id, request));
+	}
+
+	@PutMapping("/{id}/status")
+	public ApiResponse<RoomResponse> changeStatus(
+			@PathVariable Long id,
+			@Valid @RequestBody RoomStatusChangeRequest request
+	) {
+		return ApiResponse.success(roomService.changeStatus(id, request));
 	}
 }

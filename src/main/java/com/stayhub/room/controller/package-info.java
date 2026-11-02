@@ -5,7 +5,7 @@
  *
  * <p>들어 있는 파일
  * <ul>
- *   <li>{@code RoomController} — 객실 API 4개 (목록·상세·등록·수정)</li>
+ *   <li>{@code RoomController} — 객실 API 5개 (목록·상세·등록·수정·상태 변경)</li>
  *   <li>{@code RoomStatusLogController} — 객실 상태 변경 이력 API 4개 (목록·상세·등록·수정)</li>
  * </ul>
  */

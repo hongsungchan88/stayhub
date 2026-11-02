@@ -15,6 +15,7 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,7 +30,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
  * 예외 처리 테스트.
  *
  * <p><b>이 파일이 하는 일</b>
- * <br>잘못된 요청마다 {@link GlobalExceptionHandler} 가 맞는 응답 코드(400·404·500)와
+ * <br>잘못된 요청마다 {@link GlobalExceptionHandler} 가 맞는 응답 코드(400·404·409·500)와
  * {@link ApiResponse} 실패 형식으로 답하는지 확인합니다.
  *
  * <p>DB·서버를 띄우지 않습니다. 테스트 전용 컨트롤러({@link TestController})로 예외를 일부러 일으키고,
@@ -149,6 +150,15 @@ class GlobalExceptionHandlerTest {
 				.andExpect(jsonPath("$.message").value("이미 예약된 객실입니다."));
 	}
 
+	@Test
+	@DisplayName("@Version 충돌은 409 이고 새로고침 안내 메시지가 나간다")
+	void optimisticLockIs409() throws Exception {
+		mockMvc.perform(get("/test/optimistic-lock"))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value("다른 담당자가 먼저 객실 상태를 바꿨습니다. 새로고침 후 다시 시도해 주세요."));
+	}
+
 	/** 테스트용 enum. 실제 도메인 enum 에 기대지 않으려고 따로 둡니다. */
 	enum TestCategory { WIFI, PARKING }
 
@@ -193,6 +203,11 @@ class GlobalExceptionHandlerTest {
 		@GetMapping("/test/business")
 		String business() {
 			throw new BusinessException("이미 예약된 객실입니다.");
+		}
+
+		@GetMapping("/test/optimistic-lock")
+		String optimisticLock() {
+			throw new ObjectOptimisticLockingFailureException(Object.class, 1L);
 		}
 	}
 }
