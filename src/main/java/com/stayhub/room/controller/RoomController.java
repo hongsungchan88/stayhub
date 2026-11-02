@@ -1,5 +1,6 @@
 package com.stayhub.room.controller;
 
+import com.stayhub.account.dto.LoginUser;
 import com.stayhub.common.ApiResponse;
 import com.stayhub.common.PageResponse;
 import com.stayhub.room.dto.RoomCreateRequest;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.SessionAttribute;
 
 /**
  * 객실 API.
@@ -70,8 +72,9 @@ public class RoomController {
 	@PutMapping("/{id}/status")
 	public ApiResponse<RoomResponse> changeStatus(
 			@PathVariable Long id,
-			@Valid @RequestBody RoomStatusChangeRequest request
+			@Valid @RequestBody RoomStatusChangeRequest request,
+			@SessionAttribute(LoginUser.SESSION_KEY) LoginUser loginUser
 	) {
-		return ApiResponse.success(roomService.changeStatus(id, request));
+		return ApiResponse.success(roomService.changeStatus(id, request, loginUser.userId()));
 	}
 }

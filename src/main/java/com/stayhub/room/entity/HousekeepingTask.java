@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -77,6 +78,14 @@ public class HousekeepingTask extends BaseEntity {
 	/** 작업 완료 일시. 아직 완료 전이면 null. */
 	@Column(name = "completed_at")
 	private LocalDateTime completedAt;
+
+	/**
+	 * 동시 변경을 막는 버전 번호(정책 40행). 값은 JPA 가 저장할 때마다 올립니다. 직접 바꾸지 않습니다.
+	 * 두 사람이 거의 동시에 같은 작업을 바꾸면 나중 쪽은 ObjectOptimisticLockingFailureException 으로 실패합니다.
+	 */
+	@Version
+	@Column(name = "version", nullable = false)
+	private Long version;
 
 	/**
 	 * 새 작업을 만듭니다. 상태는 항상 SCHEDULED 로 시작합니다.

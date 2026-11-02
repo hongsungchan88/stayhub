@@ -121,7 +121,7 @@ class RoomServiceTest {
 		RoomResponse created = roomService.create(createRequest("101"));
 
 		RoomResponse changed = roomService.changeStatus(created.id(), new RoomStatusChangeRequest(
-				RoomStatus.VACANT, RoomStatus.OCCUPIED, "체크인", 7L));
+				RoomStatus.VACANT, RoomStatus.OCCUPIED, "체크인"), 7L);
 
 		assertThat(changed.status()).isEqualTo(RoomStatus.OCCUPIED);
 		assertThat(changed.statusUpdatedBy()).isEqualTo(7L);
@@ -143,11 +143,11 @@ class RoomServiceTest {
 		RoomResponse created = roomService.create(createRequest("101"));
 		// 다른 담당자가 먼저 VACANT → OCCUPIED 로 바꿈
 		roomService.changeStatus(created.id(), new RoomStatusChangeRequest(
-				RoomStatus.VACANT, RoomStatus.OCCUPIED, "체크인", 7L));
+				RoomStatus.VACANT, RoomStatus.OCCUPIED, "체크인"), 7L);
 
 		// 나는 아직 VACANT 로 보고 있는 화면에서 CLEANING 으로 바꾸려 함
 		assertThatThrownBy(() -> roomService.changeStatus(created.id(), new RoomStatusChangeRequest(
-				RoomStatus.VACANT, RoomStatus.CLEANING, "청소 시작", 8L)))
+				RoomStatus.VACANT, RoomStatus.CLEANING, "청소 시작"), 8L))
 				.isInstanceOf(BusinessException.class)
 				.hasMessage("다른 담당자가 먼저 객실 상태를 바꿨습니다. 새로고침 후 다시 시도해 주세요.");
 
@@ -171,7 +171,7 @@ class RoomServiceTest {
 		RoomResponse created = roomService.create(createRequest("101"));
 
 		assertThatThrownBy(() -> roomService.changeStatus(created.id(), new RoomStatusChangeRequest(
-				RoomStatus.VACANT, RoomStatus.VACANT, "확인", 7L)))
+				RoomStatus.VACANT, RoomStatus.VACANT, "확인"), 7L))
 				.isInstanceOf(BusinessException.class)
 				.hasMessage("이미 같은 상태입니다.");
 
@@ -182,7 +182,7 @@ class RoomServiceTest {
 	@DisplayName("없는 객실의 상태를 바꾸면 BusinessException 이 난다")
 	void changeStatusMissingRoomThrows() {
 		assertThatThrownBy(() -> roomService.changeStatus(99999L, new RoomStatusChangeRequest(
-				RoomStatus.VACANT, RoomStatus.OCCUPIED, "체크인", 7L)))
+				RoomStatus.VACANT, RoomStatus.OCCUPIED, "체크인"), 7L))
 				.isInstanceOf(BusinessException.class)
 				.hasMessage("객실을 찾을 수 없습니다.");
 	}

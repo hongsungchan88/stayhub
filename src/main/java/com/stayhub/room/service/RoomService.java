@@ -118,25 +118,27 @@ public class RoomService {
 	 * 충돌 이력까지 사라집니다. 충돌 이력은 남겨야 하므로 이 예외로는 되돌리지 않게 합니다.
 	 * 반려되는 경우 이 메서드가 DB 에 쓰는 것은 충돌 이력 한 줄뿐입니다.
 	 * 충돌 이력을 남기기 위해 이 메서드에서만 허용합니다. 다른 곳에는 쓰지 마세요.
+	 *
+	 * @param changedBy 변경 담당자 ID. 컨트롤러가 로그인 세션에서 꺼내 넘깁니다.
 	 */
 	@Transactional(noRollbackFor = BusinessException.class)
-	public RoomResponse changeStatus(Long id, RoomStatusChangeRequest request) {
+	public RoomResponse changeStatus(Long id, RoomStatusChangeRequest request, Long changedBy) {
 		Room room = findOrThrow(id);
 		RoomStatus currentStatus = room.getStatus();
 
 		if (currentStatus != request.previousStatus()) {
 			// 충돌 이력의 변경 전 상태는 화면이 본 값이 아니라 DB 의 실제 상태로 남깁니다.
 			roomStatusLogRepository.save(RoomStatusLog.create(
-					id, currentStatus, request.newStatus(), request.changeReason(), request.changedBy(), true));
+					id, currentStatus, request.newStatus(), request.changeReason(), changedBy, true));
 			throw new BusinessException("다른 담당자가 먼저 객실 상태를 바꿨습니다. 새로고침 후 다시 시도해 주세요.");
 		}
 		if (currentStatus == request.newStatus()) {
 			throw new BusinessException("이미 같은 상태입니다.");
 		}
 
-		room.changeStatus(request.newStatus(), request.changedBy());
+		room.changeStatus(request.newStatus(), changedBy);
 		roomStatusLogRepository.save(RoomStatusLog.create(
-				id, currentStatus, request.newStatus(), request.changeReason(), request.changedBy(), false));
+				id, currentStatus, request.newStatus(), request.changeReason(), changedBy, false));
 		// 수정일시(updatedAt)를 응답에 담으려고 먼저 반영합니다. (update 와 같은 이유)
 		roomRepository.flush();
 		return RoomResponse.from(room);
