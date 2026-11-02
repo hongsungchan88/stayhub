@@ -15,3 +15,10 @@ spring:
         format_sql: true
     # 화면을 그리는 동안 DB 연결을 붙잡고 있지 않도록 끕니다. 커넥션 고갈을 막아줍니다.
     open-in-view: false
+    # 테이블을 먼저 만든 뒤에 data.sql을 실행합니다.(없으면 테이블이 없어서 INSERT가 실패합니다.)
+    defer-datasource-initialization: true
+
+  #서버가 켜질 때마다 data.sql을 실행합니다.(INSERT IGNORE라서 중복 걱정 없음)
+  sql:
+    init:
+      mode: always

@@ -11,6 +11,7 @@ import com.stayhub.content.property.dto.PropertyUpdateRequest;
 import com.stayhub.content.property.entity.PropertyStatus;
 import com.stayhub.content.property.repository.PropertyRepository;
 import com.stayhub.content.property.service.PropertyService;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -59,7 +60,8 @@ class PropertyServiceTest {
 		PropertyResponse created = propertyService.create(createRequest("바다 앞 펜션"));
 
 		propertyService.update(created.id(), new PropertyUpdateRequest(
-				"산속 펜션", "<p>조용한 산속 숙소입니다.</p>", PropertyStatus.PUBLISHED));
+				"산속 펜션", "<p>조용한 산속 숙소입니다.</p>", PropertyStatus.PUBLISHED,
+				List.of())); // 시설 저장은 PropertyFacilityServiceTest 에서 확인
 
 		PropertyResponse found = propertyService.getDetail(created.id());
 		assertThat(found.propertyName()).isEqualTo("산속 펜션");
