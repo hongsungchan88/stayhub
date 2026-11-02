@@ -188,14 +188,14 @@ public class GlobalExceptionHandler {
 	 * <ul>
 	 *   <li>두 담당자가 같은 객실의 상태 변경을 거의 동시에 누름 — 먼저 끝난 쪽만 반영되고 나중 쪽이 실패합니다</li>
 	 * </ul>
-	 * 응답은 "다른 담당자가 먼저 객실 상태를 바꿨습니다. 새로고침 후 다시 시도해 주세요."
+	 * 응답은 "다른 담당자가 먼저 이 정보를 바꿨습니다. 새로고침 후 다시 시도해 주세요."
 	 */
 	@ExceptionHandler(ObjectOptimisticLockingFailureException.class)
 	public ResponseEntity<ApiResponse<Void>> handleOptimisticLock(ObjectOptimisticLockingFailureException e) {
 		log.warn("동시 변경 충돌: {}", e.getMessage());
 		return ResponseEntity
 				.status(HttpStatus.CONFLICT)
-				.body(ApiResponse.error("다른 담당자가 먼저 객실 상태를 바꿨습니다. 새로고침 후 다시 시도해 주세요."));
+				.body(ApiResponse.error("다른 담당자가 먼저 이 정보를 바꿨습니다. 새로고침 후 다시 시도해 주세요."));
 	}
 
 	/**
