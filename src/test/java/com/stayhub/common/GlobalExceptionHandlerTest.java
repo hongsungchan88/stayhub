@@ -156,7 +156,7 @@ class GlobalExceptionHandlerTest {
 		mockMvc.perform(get("/test/optimistic-lock"))
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("다른 담당자가 먼저 객실 상태를 바꿨습니다. 새로고침 후 다시 시도해 주세요."));
+				.andExpect(jsonPath("$.message").value("다른 담당자가 먼저 이 정보를 바꿨습니다. 새로고침 후 다시 시도해 주세요."));
 	}
 
 	/** 테스트용 enum. 실제 도메인 enum 에 기대지 않으려고 따로 둡니다. */
