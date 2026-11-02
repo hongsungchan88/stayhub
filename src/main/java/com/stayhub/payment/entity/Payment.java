@@ -1,6 +1,7 @@
 package com.stayhub.payment.entity;
 
 import com.stayhub.common.BaseEntity;
+import com.stayhub.common.BusinessException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -9,6 +10,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import lombok.AccessLevel;
@@ -26,7 +28,8 @@ import org.hibernate.annotations.ColumnDefault;
  * <p>값을 바꾸는 방법은 아래 메서드뿐입니다.
  * <ul>
  *   <li>새로 만들 때 — {@link #create}</li>
- *   <li>고칠 때 — {@link #update}</li>
+ *   <li>고칠 때 — {@link #update} (상태·환불 값은 바꾸지 않음)</li>
+ *   <li>상태 바꿀 때 — {@link #changeStatus} (허용 규칙은 {@link PaymentStatus#canChangeTo})</li>
  * </ul>
  * 삭제 기능은 없습니다.
  *
@@ -92,6 +95,14 @@ public class Payment extends BaseEntity {
 	private String errorNote;
 
 	/**
+	 * 동시 변경을 막는 버전 번호(정책 40행). JPA 가 저장할 때마다 올립니다. 직접 바꾸지 않습니다.
+	 * 두 담당자가 같은 결제의 환불을 거의 동시에 처리하면 나중 쪽은 ObjectOptimisticLockingFailureException(409)으로 실패합니다.
+	 */
+	@Version
+	@Column(name = "version", nullable = false)
+	private Long version;
+
+	/**
 	 * 새 결제를 만듭니다. 상태는 항상 COMPLETED 로 시작합니다.
 	 *
 	 * @param commissionAmount 비어 있으면 0
@@ -135,6 +146,23 @@ public class Payment extends BaseEntity {
 		this.commissionAmount = defaultZero(commissionAmount);
 		this.netRevenue = defaultZero(netRevenue);
 		this.errorNote = errorNote;
+	}
+
+	/**
+	 * 결제 상태 변경. 허용되지 않는 변경이면 BusinessException.
+	 *
+	 * <p>C: 환불(PAY-001)은 이 메서드를 부르기 전후에 아래를 채우세요. 상태 변경과 같은 트랜잭션에서 처리합니다.
+	 * <ul>
+	 *   <li>REFUND_REQUESTED — refund_request_date 저장</li>
+	 *   <li>REFUNDED · PARTIALLY_REFUNDED — 체크인 3일 전까지 전액, 이후 부분 환불 규정으로 refund_amount·refund_rule_applied 산출</li>
+	 *   <li>환불 거절(REFUND_REQUESTED → COMPLETED) — 규정 외 요청이면 error_note 에 사유</li>
+	 * </ul>
+	 */
+	public void changeStatus(PaymentStatus next) {
+		if (!paymentStatus.canChangeTo(next)) {
+			throw new BusinessException("결제 상태를 " + paymentStatus + "에서 " + next + "(으)로 바꿀 수 없습니다.");
+		}
+		this.paymentStatus = next;
 	}
 
 	/** 정의서의 "기본 0" — 비어 있으면 0 을 넣습니다. */

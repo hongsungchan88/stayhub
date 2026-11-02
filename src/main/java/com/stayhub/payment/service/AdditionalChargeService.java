@@ -7,6 +7,7 @@ import com.stayhub.payment.dto.AdditionalChargeResponse;
 import com.stayhub.payment.dto.AdditionalChargeUpdateRequest;
 import com.stayhub.payment.entity.AdditionalCharge;
 import com.stayhub.payment.entity.Payment;
+import com.stayhub.payment.entity.PaymentStatus;
 import com.stayhub.payment.repository.AdditionalChargeRepository;
 import com.stayhub.payment.repository.PaymentRepository;
 import org.springframework.data.domain.PageRequest;
@@ -96,6 +97,7 @@ public class AdditionalChargeService {
 	/**
 	 * 합산 정보를 확인합니다 (PAY-002). 합산하면 같은 예약의 결제를 지정해야 하고, 합산하지 않으면 결제를 지정할 수 없습니다.
 	 * 이 확인이 없으면 다른 예약의 결제 합계에 금액이 더해질 수 있습니다.
+	 * 합산은 결제 완료(COMPLETED) 결제에만 합니다. 실패·환불 중·환불된 결제에 더하면 받을 수 없는 금액이 합계에 잡힙니다.
 	 */
 	private void validateMerge(Long reservationId, Boolean isMerged, Long paymentId) {
 		if (!Boolean.TRUE.equals(isMerged)) {
@@ -111,6 +113,9 @@ public class AdditionalChargeService {
 				.orElseThrow(() -> new BusinessException("합산할 결제 내역을 찾을 수 없습니다."));
 		if (!payment.getReservationId().equals(reservationId)) {
 			throw new BusinessException("같은 예약의 결제에만 합산할 수 있습니다.");
+		}
+		if (payment.getPaymentStatus() != PaymentStatus.COMPLETED) {
+			throw new BusinessException("결제 완료 상태의 결제에만 합산할 수 있습니다.");
 		}
 	}
 

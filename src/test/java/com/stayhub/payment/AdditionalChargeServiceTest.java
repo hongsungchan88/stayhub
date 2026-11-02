@@ -10,7 +10,9 @@ import com.stayhub.payment.dto.AdditionalChargeResponse;
 import com.stayhub.payment.dto.AdditionalChargeUpdateRequest;
 import com.stayhub.payment.dto.PaymentCreateRequest;
 import com.stayhub.payment.entity.AdditionalChargeType;
+import com.stayhub.payment.entity.PaymentStatus;
 import com.stayhub.payment.repository.AdditionalChargeRepository;
+import com.stayhub.payment.repository.PaymentRepository;
 import com.stayhub.payment.service.AdditionalChargeService;
 import com.stayhub.payment.service.PaymentService;
 import java.math.BigDecimal;
@@ -19,6 +21,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -40,6 +43,9 @@ class AdditionalChargeServiceTest {
 
 	@Autowired
 	private PaymentService paymentService;
+
+	@Autowired
+	private PaymentRepository paymentRepository;
 
 	@BeforeEach
 	void setUp() {
@@ -129,6 +135,27 @@ class AdditionalChargeServiceTest {
 				1L, AdditionalChargeType.MINIBAR, "생수 2병", new BigDecimal("4000.00"), true, otherPaymentId, null)))
 				.isInstanceOf(BusinessException.class)
 				.hasMessage("같은 예약의 결제에만 합산할 수 있습니다.");
+	}
+
+	@Test
+	@DisplayName("결제 완료가 아닌 결제(FAILED·REFUND_REQUESTED)에는 합산할 수 없고, COMPLETED 에는 된다")
+	void mergeOnlyToCompletedPayment() {
+		Long paymentId = createPayment(1L);
+		// FAILED 로 바꾸는 흐름이 아직 없어서 테스트에서 직접 넣습니다(TaxInvoiceServiceTest 와 같은 방식).
+		ReflectionTestUtils.setField(paymentRepository.findById(paymentId).orElseThrow(), "paymentStatus", PaymentStatus.FAILED);
+
+		assertThatThrownBy(() -> additionalChargeService.create(mergeRequest(1L, true, paymentId)))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("결제 완료 상태의 결제에만 합산할 수 있습니다.");
+
+		Long refundingId = createPayment(1L);
+		paymentRepository.findById(refundingId).orElseThrow().changeStatus(PaymentStatus.REFUND_REQUESTED);
+		assertThatThrownBy(() -> additionalChargeService.create(mergeRequest(1L, true, refundingId)))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("결제 완료 상태의 결제에만 합산할 수 있습니다.");
+
+		Long completedId = createPayment(1L);
+		assertThat(additionalChargeService.create(mergeRequest(1L, true, completedId)).paymentId()).isEqualTo(completedId);
 	}
 
 	/** 테스트용 결제를 등록하고 ID 를 돌려줍니다. */
