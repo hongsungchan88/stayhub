@@ -98,15 +98,17 @@ public class HousekeepingTaskService {
 	 *
 	 * <p>작업과 객실은 한 트랜잭션이라 둘 다 바뀌거나 둘 다 안 바뀝니다. 객실 상태가 기대한 값과 달라 반려되면
 	 * 이 메서드가 전체를 되돌리므로, RoomService 가 남기려던 충돌 이력도 남지 않습니다.
+	 *
+	 * @param changedBy 변경 담당자 ID. 컨트롤러가 로그인 세션에서 꺼내 넘깁니다.
 	 */
 	@Transactional
-	public HousekeepingTaskResponse changeStatus(Long id, HousekeepingTaskStatusChangeRequest request) {
+	public HousekeepingTaskResponse changeStatus(Long id, HousekeepingTaskStatusChangeRequest request, Long changedBy) {
 		HousekeepingTask housekeepingTask = findOrThrow(id);
 		HousekeepingTaskStatus newStatus = request.newStatus();
 		validateTransition(housekeepingTask.getStatus(), newStatus);
 
 		if (housekeepingTask.getTaskType() == HousekeepingTaskType.CLEANING) {
-			changeRoomStatus(housekeepingTask.getRoomId(), newStatus, request.changedBy());
+			changeRoomStatus(housekeepingTask.getRoomId(), newStatus, changedBy);
 		}
 		housekeepingTask.changeStatus(newStatus);
 		// 수정일시(updatedAt)를 응답에 담으려고 먼저 반영합니다. (update 와 같은 이유)
@@ -126,11 +128,20 @@ public class HousekeepingTaskService {
 	/** 작업 상태에 맞춰 객실 상태를 바꿉니다. */
 	private void changeRoomStatus(Long roomId, HousekeepingTaskStatus newStatus, Long changedBy) {
 		if (newStatus == HousekeepingTaskStatus.IN_PROGRESS) {
+			checkRoomStatus(roomId, RoomStatus.CLEANING_NEEDED, "객실이 청소 필요 상태가 아니라 청소를 시작할 수 없습니다.");
 			roomService.changeStatus(roomId, new RoomStatusChangeRequest(
-					RoomStatus.CLEANING_NEEDED, RoomStatus.CLEANING, "청소 시작", changedBy));
+					RoomStatus.CLEANING_NEEDED, RoomStatus.CLEANING, "청소 시작"), changedBy);
 		} else {
+			checkRoomStatus(roomId, RoomStatus.CLEANING, "객실이 청소 중 상태가 아니라 청소를 완료할 수 없습니다.");
 			roomService.changeStatus(roomId, new RoomStatusChangeRequest(
-					RoomStatus.CLEANING, RoomStatus.VACANT, "청소 완료", changedBy));
+					RoomStatus.CLEANING, RoomStatus.VACANT, "청소 완료"), changedBy);
+		}
+	}
+
+	/** 객실 상태가 맞지 않으면 실제 이유를 알려 줍니다. 확인 없이 부르면 "다른 담당자가 먼저…" 문구가 나갑니다. */
+	private void checkRoomStatus(Long roomId, RoomStatus required, String message) {
+		if (roomService.getDetail(roomId).status() != required) {
+			throw new BusinessException(message);
 		}
 	}
 

@@ -7,7 +7,7 @@
  * <ul>
  *   <li>{@code RoomController} — 객실 API 5개 (목록·상세·등록·수정·상태 변경)</li>
  *   <li>{@code RoomStatusLogController} — 객실 상태 변경 이력 API 2개 (목록·상세)</li>
- *   <li>{@code HousekeepingTaskController} — 청소/점검 작업 스케줄 API 4개 (목록·상세·등록·수정)</li>
+ *   <li>{@code HousekeepingTaskController} — 청소/점검 작업 스케줄 API 5개 (목록·상세·등록·수정·상태 변경)</li>
  * </ul>
  */
 package com.stayhub.room.controller;
