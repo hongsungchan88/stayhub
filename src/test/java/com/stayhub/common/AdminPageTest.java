@@ -73,6 +73,9 @@ class AdminPageTest {
 				.andExpect(content().string(Matchers.containsString("직원 계정 관리")));
 
 		assertThat(menusOf(UserRole.HOST)).containsExactly(AdminMenu.values());
+		// 사이트맵 "접근 권한" 칸에 호스트가 없는 메뉴도 HOST 에게는 보인다
+		assertThat(menusOf(UserRole.HOST)).contains(
+				AdminMenu.CHECK_IN_OUT, AdminMenu.HOUSEKEEPING, AdminMenu.ADDITIONAL_CHARGE, AdminMenu.INBOX);
 	}
 
 	@Test

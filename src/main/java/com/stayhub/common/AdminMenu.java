@@ -77,6 +77,7 @@ public enum AdminMenu {
 	/** 이 역할이 볼 수 있는 메뉴를 1depth 이름별로 묶어 정의 순서대로 돌려줍니다. */
 	public static Map<String, List<AdminMenu>> groupsFor(UserRole role) {
 		return Arrays.stream(values())
+				// HOST 는 전체 메뉴(정책정의서 "권한 | 호스트"). 그래서 위 항목들의 역할 목록에 HOST 를 따로 넣지 않습니다.
 				.filter(menu -> role == HOST || menu.roles.contains(role))
 				.collect(Collectors.groupingBy(menu -> menu.group, LinkedHashMap::new, Collectors.toList()));
 	}
