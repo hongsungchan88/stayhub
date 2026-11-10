@@ -3,6 +3,7 @@ package com.stayhub.payment.controller;
 import com.stayhub.common.ApiResponse;
 import com.stayhub.common.PageResponse;
 import com.stayhub.payment.dto.PaymentCreateRequest;
+import com.stayhub.payment.dto.PaymentRefundRejectRequest;
 import com.stayhub.payment.dto.PaymentResponse;
 import com.stayhub.payment.dto.PaymentTotalResponse;
 import com.stayhub.payment.dto.PaymentUpdateRequest;
@@ -28,6 +29,9 @@ import org.springframework.web.bind.annotation.RestController;
  * GET    /api/payments/{id}/total  결제 합계 (결제 금액 + 합산된 추가 요금)
  * POST   /api/payments          등록
  * PUT    /api/payments/{id}     수정
+ * PUT    /api/payments/{id}/refund-request    환불 요청 (본문 없음, 요청일 = 오늘)
+ * PUT    /api/payments/{id}/refund            환불 처리 (본문 없음, 규정 자동 적용)
+ * PUT    /api/payments/{id}/refund-rejection  환불 거절 (본문: reason)
  * </pre>
  * 삭제 기능이 없는 테이블이라 DELETE API 는 없습니다.
  */
@@ -70,5 +74,23 @@ public class PaymentController {
 			@Valid @RequestBody PaymentUpdateRequest request
 	) {
 		return ApiResponse.success(paymentService.update(id, request));
+	}
+
+	@PutMapping("/{id}/refund-request")
+	public ApiResponse<PaymentResponse> requestRefund(@PathVariable Long id) {
+		return ApiResponse.success(paymentService.requestRefund(id));
+	}
+
+	@PutMapping("/{id}/refund")
+	public ApiResponse<PaymentResponse> refund(@PathVariable Long id) {
+		return ApiResponse.success(paymentService.refund(id));
+	}
+
+	@PutMapping("/{id}/refund-rejection")
+	public ApiResponse<PaymentResponse> rejectRefund(
+			@PathVariable Long id,
+			@Valid @RequestBody PaymentRefundRejectRequest request
+	) {
+		return ApiResponse.success(paymentService.rejectRefund(id, request));
 	}
 }

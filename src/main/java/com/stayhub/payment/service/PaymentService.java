@@ -3,14 +3,21 @@ package com.stayhub.payment.service;
 import com.stayhub.common.BusinessException;
 import com.stayhub.common.PageResponse;
 import com.stayhub.payment.dto.PaymentCreateRequest;
+import com.stayhub.payment.dto.PaymentRefundRejectRequest;
 import com.stayhub.payment.dto.PaymentResponse;
 import com.stayhub.payment.dto.PaymentTotalResponse;
 import com.stayhub.payment.dto.PaymentUpdateRequest;
 import com.stayhub.payment.entity.AdditionalCharge;
 import com.stayhub.payment.entity.Payment;
+import com.stayhub.payment.entity.PaymentRefundRule;
+import com.stayhub.payment.entity.PaymentStatus;
 import com.stayhub.payment.repository.AdditionalChargeRepository;
 import com.stayhub.payment.repository.PaymentRepository;
+import com.stayhub.reservation.entity.Reservation;
+import com.stayhub.reservation.repository.ReservationRepository;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -34,12 +41,27 @@ public class PaymentService {
 			Sort.Order.asc("id")
 	);
 
+	/** 전액 환불 기준: 체크인 며칠 전까지 요청해야 전액인지. 정의서 "체크인 3일 전까지 전액 환불". */
+	static final int FULL_REFUND_DAYS_BEFORE = 3;
+
+	/**
+	 * 부분 환불 비율. <b>임시값(50%)</b> — 정의서에 "이후 부분 환불 규정 적용" 만 있고 비율이 없어 총괄 확인 대기 중입니다.
+	 * 비율이 정해지면 이 값만 바꾸세요.
+	 */
+	static final BigDecimal PARTIAL_REFUND_RATE = new BigDecimal("0.50");
+
 	private final PaymentRepository paymentRepository;
 	private final AdditionalChargeRepository additionalChargeRepository;
+	private final ReservationRepository reservationRepository;
 
-	public PaymentService(PaymentRepository paymentRepository, AdditionalChargeRepository additionalChargeRepository) {
+	public PaymentService(
+			PaymentRepository paymentRepository,
+			AdditionalChargeRepository additionalChargeRepository,
+			ReservationRepository reservationRepository
+	) {
 		this.paymentRepository = paymentRepository;
 		this.additionalChargeRepository = additionalChargeRepository;
+		this.reservationRepository = reservationRepository;
 	}
 
 	/**
@@ -108,6 +130,67 @@ public class PaymentService {
 		// 다만 수정일시(updatedAt)는 반영되는 순간에 채워지므로, 응답에 새 값을 담으려고 먼저 반영합니다.
 		paymentRepository.flush();
 		return PaymentResponse.from(payment);
+	}
+
+	/**
+	 * 환불 요청 (PAY-001). 결제 완료(COMPLETED) 상태에서만 가능하고, 오늘 날짜를 환불 요청일로 저장합니다.
+	 * 다른 상태면 {@code Payment.changeStatus} 가 BusinessException 으로 반려합니다.
+	 */
+	@Transactional
+	public PaymentResponse requestRefund(Long id) {
+		Payment payment = findOrThrow(id);
+		payment.requestRefund(LocalDate.now());
+		paymentRepository.flush(); // 수정일시(updatedAt)를 응답에 담으려고 먼저 반영 (update 와 같은 이유)
+		return PaymentResponse.from(payment);
+	}
+
+	/**
+	 * 환불 처리 (PAY-001). 환불 규정을 자동으로 적용해 환불액을 계산하고 상태를 바꿉니다.
+	 *
+	 * <ul>
+	 *   <li>환불 요청일이 체크인 {@value #FULL_REFUND_DAYS_BEFORE}일 전까지면 — 전액. REFUNDED, 규정 FULL, 환불액 = 결제 금액</li>
+	 *   <li>그 이후면 — 부분. PARTIALLY_REFUNDED, 규정 PARTIAL, 환불액 = 결제 금액 × {@link #PARTIAL_REFUND_RATE}</li>
+	 * </ul>
+	 * 체크인 날짜는 결제의 예약(reservations)에서 읽습니다. 합산된 추가 요금은 환불액에 넣지 않습니다.
+	 * 환불 요청(REFUND_REQUESTED) 상태가 아니면 BusinessException.
+	 */
+	@Transactional
+	public PaymentResponse refund(Long id) {
+		Payment payment = findOrThrow(id);
+		if (payment.getPaymentStatus() != PaymentStatus.REFUND_REQUESTED) {
+			// 아래 계산에 요청일이 필요해서, changeStatus 보다 먼저 같은 규칙으로 막습니다.
+			throw new BusinessException("환불 요청 상태의 결제만 환불할 수 있습니다.");
+		}
+		LocalDate checkInDate = reservationRepository.findById(payment.getReservationId())
+				.map(Reservation::getCheckInDate)
+				.orElseThrow(() -> new BusinessException("결제의 예약을 찾을 수 없습니다."));
+
+		if (isFullRefund(payment.getRefundRequestDate(), checkInDate)) {
+			payment.refund(PaymentRefundRule.FULL, payment.getPaymentAmount());
+		} else {
+			payment.refund(PaymentRefundRule.PARTIAL, partialAmount(payment.getPaymentAmount()));
+		}
+		paymentRepository.flush();
+		return PaymentResponse.from(payment);
+	}
+
+	/** 환불 거절 (PAY-001). 환불 요청 상태를 결제 완료로 되돌리고, 사유를 error_note 에 남깁니다. */
+	@Transactional
+	public PaymentResponse rejectRefund(Long id, PaymentRefundRejectRequest request) {
+		Payment payment = findOrThrow(id);
+		payment.rejectRefund(request.reason());
+		paymentRepository.flush();
+		return PaymentResponse.from(payment);
+	}
+
+	/** 체크인 N일 전까지 요청했으면 전액. 예) 체크인 11/20 이면 11/17 까지 요청한 건 전액, 11/18 부터 부분. */
+	static boolean isFullRefund(LocalDate requestDate, LocalDate checkInDate) {
+		return !requestDate.isAfter(checkInDate.minusDays(FULL_REFUND_DAYS_BEFORE));
+	}
+
+	/** 부분 환불액. 소수 셋째 자리에서 반올림(DECIMAL(10,2)). */
+	static BigDecimal partialAmount(BigDecimal paymentAmount) {
+		return paymentAmount.multiply(PARTIAL_REFUND_RATE).setScale(2, RoundingMode.HALF_UP);
 	}
 
 	/** 항목 하나를 찾습니다. 없으면 예외. */

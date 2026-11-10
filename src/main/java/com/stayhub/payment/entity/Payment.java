@@ -30,6 +30,7 @@ import org.hibernate.annotations.ColumnDefault;
  *   <li>새로 만들 때 — {@link #create}</li>
  *   <li>고칠 때 — {@link #update} (상태·환불 값은 바꾸지 않음)</li>
  *   <li>상태 바꿀 때 — {@link #changeStatus} (허용 규칙은 {@link PaymentStatus#canChangeTo})</li>
+ *   <li>환불 요청·완료·거절 — {@link #requestRefund}·{@link #refund}·{@link #rejectRefund} (안에서 {@link #changeStatus} 를 부름)</li>
  * </ul>
  * 삭제 기능은 없습니다.
  *
@@ -163,6 +164,38 @@ public class Payment extends BaseEntity {
 			throw new BusinessException("결제 상태를 " + paymentStatus + "에서 " + next + "(으)로 바꿀 수 없습니다.");
 		}
 		this.paymentStatus = next;
+	}
+
+	/**
+	 * 환불 요청 (PAY-001). COMPLETED → REFUND_REQUESTED, 요청일 저장.
+	 * 거절됐던 결제를 다시 요청하면 요청일을 새로 바꾸고, 이전 거절 규정(NONE)은 지웁니다. 거절 사유(error_note)는 남겨 둡니다.
+	 */
+	public void requestRefund(LocalDate requestDate) {
+		changeStatus(PaymentStatus.REFUND_REQUESTED);
+		this.refundRequestDate = requestDate;
+		this.refundRuleApplied = null;
+	}
+
+	/**
+	 * 환불 완료 (PAY-001). REFUND_REQUESTED → 전액이면 REFUNDED, 부분이면 PARTIALLY_REFUNDED.
+	 * 규정과 금액은 서비스가 계산해서 넘깁니다.
+	 */
+	public void refund(PaymentRefundRule rule, BigDecimal amount) {
+		PaymentStatus next = switch (rule) {
+			case FULL -> PaymentStatus.REFUNDED;
+			case PARTIAL -> PaymentStatus.PARTIALLY_REFUNDED;
+			case NONE -> throw new IllegalArgumentException("환불하지 않는 경우는 rejectRefund 를 쓰세요.");
+		};
+		changeStatus(next);
+		this.refundRuleApplied = rule;
+		this.refundAmount = amount;
+	}
+
+	/** 환불 거절 (PAY-001). REFUND_REQUESTED → COMPLETED, 규정 NONE, 사유는 error_note 에. */
+	public void rejectRefund(String reason) {
+		changeStatus(PaymentStatus.COMPLETED);
+		this.refundRuleApplied = PaymentRefundRule.NONE;
+		this.errorNote = reason;
 	}
 
 	/** 정의서의 "기본 0" — 비어 있으면 0 을 넣습니다. */
