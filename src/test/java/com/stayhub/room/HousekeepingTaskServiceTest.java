@@ -178,10 +178,29 @@ class HousekeepingTaskServiceTest {
 		HousekeepingTaskResponse task = housekeepingTaskService.create(createRequest(roomId));
 
 		assertThatThrownBy(() -> changeTaskStatus(task.id(), HousekeepingTaskStatus.IN_PROGRESS))
-				.isInstanceOf(BusinessException.class);
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("객실이 청소 필요 상태가 아니라 청소를 시작할 수 없습니다.");
 
 		assertThat(housekeepingTaskService.getDetail(task.id()).status()).isEqualTo(HousekeepingTaskStatus.SCHEDULED);
 		assertThat(roomService.getDetail(roomId).status()).isEqualTo(RoomStatus.VACANT);
+	}
+
+	@Test
+	@DisplayName("객실이 청소중 상태가 아니면 청소를 완료할 수 없고 작업도 그대로다")
+	void roomNotCleaningCannotComplete() {
+		Long roomId = roomNeedingCleaning();
+		HousekeepingTaskResponse task = housekeepingTaskService.create(createRequest(roomId));
+		changeTaskStatus(task.id(), HousekeepingTaskStatus.IN_PROGRESS);
+		// 그 사이 다른 담당자가 객실을 투숙중으로 바꿈
+		roomService.changeStatus(roomId, new RoomStatusChangeRequest(
+				RoomStatus.CLEANING, RoomStatus.OCCUPIED, "체크인"), 1L);
+
+		assertThatThrownBy(() -> changeTaskStatus(task.id(), HousekeepingTaskStatus.COMPLETED))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("객실이 청소 중 상태가 아니라 청소를 완료할 수 없습니다.");
+
+		assertThat(housekeepingTaskService.getDetail(task.id()).status()).isEqualTo(HousekeepingTaskStatus.IN_PROGRESS);
+		assertThat(roomService.getDetail(roomId).status()).isEqualTo(RoomStatus.OCCUPIED);
 	}
 
 	@Test
@@ -193,7 +212,7 @@ class HousekeepingTaskServiceTest {
 	}
 
 	private HousekeepingTaskResponse changeTaskStatus(Long taskId, HousekeepingTaskStatus newStatus) {
-		return housekeepingTaskService.changeStatus(taskId, new HousekeepingTaskStatusChangeRequest(newStatus, 7L));
+		return housekeepingTaskService.changeStatus(taskId, new HousekeepingTaskStatusChangeRequest(newStatus), 7L);
 	}
 
 	private void assertInvalidTransition(Long taskId, HousekeepingTaskStatus newStatus) {
@@ -211,7 +230,7 @@ class HousekeepingTaskServiceTest {
 	private Long roomNeedingCleaning() {
 		Long roomId = createRoom();
 		roomService.changeStatus(roomId, new RoomStatusChangeRequest(
-				RoomStatus.VACANT, RoomStatus.CLEANING_NEEDED, "체크아웃", 1L));
+				RoomStatus.VACANT, RoomStatus.CLEANING_NEEDED, "체크아웃"), 1L);
 		return roomId;
 	}
 
