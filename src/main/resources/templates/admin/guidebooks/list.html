@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<!--/*
+  가이드북 목록 SCR-CMS-02 (/admin/guidebooks) — 화면 유형 ① 목록 + ③ 팝업(삭제 확인)의 참고 구현.
+
+  이 화면이 하는 일
+    GET /api/guidebooks?category=&page= 로 20건씩 불러와 표로 그립니다. 비었으면 "조회된 데이터가 없습니다".
+    카테고리를 고르면 첫 페이지부터 다시 불러옵니다(화면목록정의서 비고 "카테고리별 그룹핑" → 1차는 필터로).
+    [등록] → 편집 화면 /admin/guidebooks/new,  [수정] → /admin/guidebooks/{id}/edit
+    [삭제] → 확인 팝업(기본 포커스 [취소]) → DELETE /api/guidebooks/{id} → 토스트 → 지금 페이지 다시 불러오기
+
+  따라 만들 때 바꿀 곳 (★ 로 검색)
+    - layout(...) 의 화면 제목
+    - 검색 조건 칸(카테고리 select) — 내 API 의 필터에 맞게. 필터가 없으면 카드 헤더의 select 와 load() 의 params.set 줄 삭제
+    - 표 제목 줄(th)과 renderRows 의 한 줄 모양(td) — 칸 수를 같게
+    - <script> 맨 위 상수 3개 (API 주소, 화면 주소, 카테고리 이름표)
+    - 삭제 기능이 없는 테이블(유형 ②·③)이면 [삭제] 버튼과 remove() 함수 삭제
+    - 날짜는 formatDate(목록), 금액은 formatMoney. 사용자가 입력한 글자는 꼭 esc() 로 감싸기
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{admin/layout :: layout('가이드북 관리', ~{::section})}"><!--/* ★ 바꿀 곳: 화면 제목 */-->
+<body>
+<section class="content">
+    <div class="container-fluid">
+        <div class="card">
+            <div class="card-header d-flex align-items-center">
+                <!--/* ★ 바꿀 곳: 검색 조건. 필터가 없으면 이 select 삭제 */-->
+                <select id="category" class="form-control form-control-sm w-auto" aria-label="카테고리" onchange="load(0)">
+                    <option value="">전체 카테고리</option>
+                    <option value="PARKING">주차</option>
+                    <option value="WIFI">와이파이</option>
+                    <option value="CHECKIN">체크인</option>
+                    <option value="ETC">기타</option>
+                </select>
+                <a th:href="@{/admin/guidebooks/new}" class="btn btn-primary btn-sm ml-auto">등록</a><!--/* ★ 바꿀 곳: 등록 화면 주소 */-->
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead>
+                    <tr><!--/* ★ 바꿀 곳: 표 제목 줄. renderRows 의 td 수와 같게 */-->
+                        <th style="width: 120px">카테고리</th>
+                        <th>제목</th>
+                        <th style="width: 100px">정렬 순서</th>
+                        <th style="width: 120px">수정일</th>
+                        <th style="width: 140px">관리</th>
+                    </tr>
+                    </thead>
+                    <tbody id="rows"></tbody>
+                </table>
+            </div>
+            <div class="card-footer" id="pagination"></div>
+        </div>
+    </div>
+
+    <script>
+      const API_URL = '/api/guidebooks'; // ★ 바꿀 곳: 내 API 주소
+      const PAGE_URL = '/admin/guidebooks'; // ★ 바꿀 곳: 내 화면 주소 (AdminMenu 의 url)
+      const CATEGORY_LABELS = { PARKING: '주차', WIFI: '와이파이', CHECKIN: '체크인', ETC: '기타' }; // ★ 바꿀 곳: enum 값 → 화면 이름 (없으면 삭제)
+
+      let currentPage = 0;
+
+      async function load(page) {
+        const params = new URLSearchParams({ page });
+        const category = document.getElementById('category').value; // ★ 바꿀 곳: 필터 (없으면 이 줄과 아래 줄 삭제)
+        if (category) params.set('category', category);
+        try {
+          const result = await api('GET', `${API_URL}?${params}`);
+          if (result.content.length === 0 && page > 0) return load(page - 1); // 마지막 페이지의 마지막 건을 지웠을 때
+          currentPage = page;
+          renderRows(document.getElementById('rows'), result.content, item => `
+            <tr>
+              <td>${esc(CATEGORY_LABELS[item.category])}</td>
+              <td>${esc(item.title)}</td>
+              <td>${item.sortOrder}</td>
+              <td>${formatDate(item.updatedAt)}</td>
+              <td>
+                <a href="${PAGE_URL}/${item.id}/edit" class="btn btn-outline-secondary btn-xs">수정</a>
+                <button type="button" class="btn btn-outline-danger btn-xs" onclick="remove(${item.id})">삭제</button>
+              </td>
+            </tr>`); // ★ 바꿀 곳: 한 줄 모양 (유형 ②·③이면 [삭제] 버튼 삭제)
+          renderPagination(document.getElementById('pagination'), result, load);
+        } catch (error) {
+          showError(error);
+        }
+      }
+
+      // ★ 바꿀 곳: 유형 ②·③(삭제 기능 없음)이면 이 함수째 삭제
+      async function remove(id) {
+        if (!(await confirmDelete('이 가이드북을 삭제할까요?'))) return; // ★ 바꿀 곳: 확인 문구
+        try {
+          await api('DELETE', `${API_URL}/${id}`);
+          toast('삭제되었습니다.');
+          load(currentPage);
+        } catch (error) {
+          showError(error);
+        }
+      }
+
+      load(0);
+    </script>
+</section>
+</body>
+</html>

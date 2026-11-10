@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<!--/*
+  가이드북 편집 SCR-CMS-03 (/admin/guidebooks/new, /admin/guidebooks/{id}/edit) — 화면 유형 ② 편집 폼의 참고 구현.
+
+  이 화면이 하는 일
+    등록과 수정이 같은 파일입니다. 주소에 id 가 있으면 수정: GET /api/guidebooks/{id} 로 값을 채우고 저장은 PUT.
+    없으면 등록: 저장은 POST. 저장에 성공하면 "저장되었습니다." 토스트 → 목록으로 이동.
+    입력값 검증은 서버(@Valid)가 합니다. 틀리면 그 칸 아래 빨간 글씨 + 빨간 테두리, 칸을 모르는 오류는 폼 위에.
+    필수 칸은 라벨에 class="required" → 빨간 별표. (필수 여부는 요청 DTO 의 @NotNull·@NotBlank 와 맞춥니다)
+
+  따라 만들 때 바꿀 곳 (★ 로 검색)
+    - layout(...) 의 화면 제목
+    - 입력 칸들 — name 은 요청 DTO(GuidebookCreateRequest)의 필드 이름과 한 글자도 다르지 않게.
+      name 이 같아야 formToJson 이 그 이름으로 보내고, 검증 오류가 그 칸 아래에 붙습니다
+    - <script> 맨 위 상수 3개 (API 주소, 목록 화면 주소, 주소에서 id 를 읽는 식)
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{admin/layout :: layout('가이드북 편집', ~{::section})}"><!--/* ★ 바꿀 곳: 화면 제목 */-->
+<body>
+<section class="content">
+    <div class="container-fluid">
+        <div class="card">
+            <!--/* novalidate: 브라우저 기본 검사 말고 서버 검증 메시지를 정책 모양(인라인)으로 보여주려고 */-->
+            <form id="editForm" novalidate>
+                <div class="card-body">
+                    <div class="alert alert-danger d-none" data-form-error></div>
+
+                    <!--/* ★ 바꿀 곳: 입력 칸. name = 요청 DTO 필드명, 필수면 label 에 class="required" */-->
+                    <div class="form-group">
+                        <label for="category" class="required">카테고리</label>
+                        <select id="category" name="category" class="form-control">
+                            <option value="">선택해 주세요</option>
+                            <option value="PARKING">주차</option>
+                            <option value="WIFI">와이파이</option>
+                            <option value="CHECKIN">체크인</option>
+                            <option value="ETC">기타</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="title" class="required">제목</label>
+                        <input type="text" id="title" name="title" class="form-control" maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label for="content" class="required">내용</label>
+                        <textarea id="content" name="content" class="form-control" rows="6" maxlength="1000"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="sortOrder">정렬 순서</label>
+                        <input type="number" id="sortOrder" name="sortOrder" class="form-control w-auto" min="0">
+                        <small class="form-text text-muted">비우면 0 (등록 순)</small>
+                    </div>
+                </div>
+                <div class="card-footer text-right">
+                    <a th:href="@{/admin/guidebooks}" class="btn btn-secondary">취소</a><!--/* ★ 바꿀 곳: 목록 화면 주소 */-->
+                    <button type="submit" class="btn btn-primary">저장</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+      const API_URL = '/api/guidebooks'; // ★ 바꿀 곳: 내 API 주소
+      const LIST_URL = '/admin/guidebooks'; // ★ 바꿀 곳: 목록 화면 주소
+      const id = location.pathname.match(/\/admin\/guidebooks\/(\d+)\/edit/)?.[1]; // ★ 바꿀 곳: 주소 모양. 등록 화면이면 undefined
+
+      const form = document.getElementById('editForm');
+
+      if (id) {
+        api('GET', `${API_URL}/${id}`)
+          .then(data => fillForm(form, data))
+          .catch(error => showFormError(form, error)); // 없는 id 면 "가이드북을 찾을 수 없습니다." 가 폼 위에
+      }
+
+      form.addEventListener('submit', async e => {
+        e.preventDefault();
+        clearFormError(form);
+        try {
+          if (id) await api('PUT', `${API_URL}/${id}`, formToJson(form));
+          else await api('POST', API_URL, formToJson(form));
+          toast('저장되었습니다.');
+          location.href = LIST_URL;
+        } catch (error) {
+          showFormError(form, error);
+        }
+      });
+    </script>
+</section>
+</body>
+</html>

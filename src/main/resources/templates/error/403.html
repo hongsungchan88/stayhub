@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<!--/*
+  403 안내 페이지 (정책정의서 "권한 없음" — 직접 URL 로 권한 없는 화면에 들어왔을 때).
+
+  이 화면이 하는 일
+    stayhub.js 의 api() 가 403 을 받으면 /403 으로 보내 이 화면을 띄웁니다.
+    파일 위치가 templates/error/403.html 이라, 서버가 화면 요청에 403 을 내면 Spring Boot 가 이 화면을 자동으로 씁니다.
+    (역할별로 주소를 막는 처리는 ACC-005 에서 추가합니다.) 레이아웃 없이 단독 화면입니다.
+
+  따라 만들 때 바꿀 곳
+    없습니다.
+*/-->
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>권한 없음 - stayhub</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2.0/dist/css/adminlte.min.css">
+</head>
+<body class="hold-transition login-page">
+<div class="error-page text-center">
+    <h2 class="headline text-warning float-none">403</h2>
+    <h3 class="mt-3">접근 권한이 없습니다.</h3>
+    <p>이 화면을 볼 수 있는 역할이 아닙니다. 필요하면 호스트에게 문의해 주세요.</p>
+    <a th:href="@{/admin}" class="btn btn-primary">대시보드로</a>
+</div>
+</body>
+</html>
