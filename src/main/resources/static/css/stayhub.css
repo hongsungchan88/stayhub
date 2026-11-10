@@ -1,0 +1,12 @@
+/* stayhub 공통 스타일. AdminLTE 위에 정책정의서 "공통 UI" 에 필요한 것만 더합니다. 화면마다 복사하지 마세요. */
+
+/* 토스트(우측 상단)가 상단바의 로그아웃 버튼을 가리지 않도록 상단바 아래에 띄웁니다. */
+.toasts-top-right {
+  top: 3.5rem;
+}
+
+/* 필수 입력 표시 — 라벨 우측 빨간 별표. 사용: <label class="required">제목</label> */
+label.required::after {
+  content: " *";
+  color: #dc3545;
+}

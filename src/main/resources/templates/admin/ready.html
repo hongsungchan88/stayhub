@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<!--/*
+  준비 중 화면. 메뉴는 있는데 아직 컨트롤러가 없는 /admin/... 주소는 전부 이 화면이 뜹니다(AdminController#ready).
+
+  따라 만들 때 바꿀 곳
+    없습니다. 내 화면 컨트롤러를 만들면 그 주소는 자동으로 내 화면이 뜹니다.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{admin/layout :: layout('준비 중', ~{::section})}">
+<body>
+<section class="content">
+    <div class="container-fluid">
+        <div class="card">
+            <div class="card-body text-center text-muted py-5">
+                <p class="mb-1">준비 중인 화면입니다.</p>
+                <small th:text="${currentUri}">/admin/...</small>
+            </div>
+        </div>
+    </div>
+</section>
+</body>
+</html>

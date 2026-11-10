@@ -110,6 +110,34 @@ GET http://localhost:8080/api/rooms
 POST http://localhost:8080/api/auth/logout
 ```
 
+## 화면 확인
+
+새 관리자 화면 만드는 순서는 [how-to-new-screen.md](how-to-new-screen.md)를 보세요.
+
+### `/admin` 을 열었더니 로그인 화면("세션이 만료되어 다시 로그인해 주세요.")으로 감
+로그인하지 않았거나 세션이 끝난 것입니다(30분 미활동, 로그아웃, 같은 계정으로 다른 곳에서 로그인). 다시 로그인하면 됩니다.
+
+### 좌측 메뉴에 내 화면이 안 보임
+역할별로 메뉴가 다릅니다. 가입하면 `STAFF` 라 대시보드만 보입니다. 개발할 때는 내 계정을 HOST 로 바꾸고 **다시 로그인**하세요.
+```sql
+UPDATE users SET role='HOST' WHERE login_id='본인아이디';
+```
+
+### 내 화면 주소를 열었는데 "준비 중" 이 뜸
+`/admin/...` 주소 중 컨트롤러가 없는 주소는 전부 "준비 중" 입니다. 내 `XxxPageController` 의 `@RequestMapping` 주소가
+`AdminMenu` 의 `url` 과 한 글자도 다르지 않은지, 클래스에 `@Controller` 가 붙어 있는지 확인하세요.
+
+### HTML·JS 를 고쳤는데 화면이 그대로
+앱을 다시 실행하세요. 실행 중에는 고치기 전 파일이 쓰입니다. 그래도 그대로면 브라우저에서 `Ctrl + F5`(캐시 무시 새로고침).
+
+### 화면에 아무것도 안 나오고 F12 Console 에 `... is not defined`
+함수 이름 오타이거나, 화면 파일이 레이아웃을 쓰지 않아 `stayhub.js` 가 안 불러와진 것입니다.
+파일 맨 위가 `th:replace="~{admin/layout :: layout('제목', ~{::section})}"` 인지, 본문과 `<script>` 가 `<section>` 안에 있는지 확인하세요.
+
+### Git Bash 의 curl 로 한글을 보냈더니 `"요청 내용을 읽을 수 없습니다."`
+Windows Git Bash 는 명령줄의 한글을 UTF-8 이 아닌 글자로 보낼 때가 있습니다. curl 테스트에는 영문 값을 쓰거나,
+화면(브라우저)에서 확인하세요.
+
 ## 설치·설정
 
 ### `mysql --version`을 쳤더니 "명령을 찾을 수 없습니다"
