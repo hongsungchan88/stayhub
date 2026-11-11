@@ -7,6 +7,7 @@
  * <ul>
  *   <li>{@code PaymentCreateRequest} — 결제 등록 요청</li>
  *   <li>{@code PaymentUpdateRequest} — 결제 수정 요청</li>
+ *   <li>{@code PaymentRefundRejectRequest} — 환불 거절 요청 (PAY-001)</li>
  *   <li>{@code PaymentResponse} — 결제 목록·상세·등록·수정 응답</li>
  *   <li>{@code PaymentTotalResponse} — 결제 합계 응답 (PAY-002)</li>
  *   <li>{@code AdditionalChargeCreateRequest} — 추가 요금 등록 요청</li>
