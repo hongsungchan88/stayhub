@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<!--/*
+  객실 현황 보드 SCR-ROM-01 (/admin/rooms) + 객실 상태 변경 팝업 SCR-ROM-02.
+  가이드북 목록(guidebooks/list.html)을 복사해 만들었습니다. 화면 유형 ① 목록 + ③ 팝업(입력).
+
+  이 화면이 하는 일
+    GET /api/rooms?page= 로 20건씩 불러와 표로 그립니다. 상태는 색으로 구분합니다(화면목록정의서 "상태별 색상 구분").
+    [상태 변경] → 팝업 → PUT /api/rooms/{id}/status → 팝업 닫기 → 토스트 → 지금 페이지 다시 불러오기
+    팝업은 열 때 표에 보이던 상태를 previousStatus 로 함께 보냅니다. 그 사이 다른 담당자가 먼저 바꿨으면
+    서버가 반려하고(동시 변경 충돌, SCR-ROM-02 "반려 안내"), 그 메시지가 팝업 위에 뜹니다. 변경 담당자는 서버가 로그인 세션에서 넣습니다.
+
+  가이드북과 다른 점
+    - 등록·수정·삭제 버튼 없음 — 객실 등록·수정 화면은 1차 범위가 아니고, 객실은 삭제 기능이 없는 테이블(유형 ②)
+    - 검색 조건 없음 — 객실 목록 API 에 필터가 없음
+    - 화면목록정의서 비고의 "카드 형태"는 참고 구현에 없는 UI 라 1차는 표 + 상태 색 배지로 만듦
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{admin/layout :: layout('객실 현황 보드', ~{::section})}">
+<body>
+<section class="content">
+    <div class="container-fluid">
+        <div class="card">
+            <div class="card-header d-flex align-items-center flex-wrap" id="legend">
+                <!--/* 상태 색 안내. 아래 STATUS 와 같은 색 */-->
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead>
+                    <tr>
+                        <th style="width: 120px">객실 번호</th>
+                        <th>객실 유형</th>
+                        <th style="width: 100px">최대 인원</th>
+                        <th style="width: 140px">기본 요금</th>
+                        <th style="width: 120px">상태</th>
+                        <th style="width: 170px">상태 변경 일시</th>
+                        <th style="width: 110px">관리</th>
+                    </tr>
+                    </thead>
+                    <tbody id="rows"></tbody>
+                </table>
+            </div>
+            <div class="card-footer" id="pagination"></div>
+        </div>
+    </div>
+
+    <!--/* SCR-ROM-02 객실 상태 변경 팝업. layout.html 의 #confirmModal 모양에 form.html 의 입력칸을 넣었습니다 */-->
+    <div class="modal fade" id="statusModal" tabindex="-1" role="dialog" aria-labelledby="statusModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <form id="statusForm" novalidate>
+                    <div class="modal-header">
+                        <h2 class="modal-title h5" id="statusModalTitle">객실 상태 변경</h2>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none" data-form-error></div>
+
+                        <!--/* name = RoomStatusChangeRequest 필드명 */-->
+                        <input type="hidden" name="previousStatus">
+                        <div class="form-group">
+                            <label>현재 상태</label>
+                            <p class="form-control-plaintext py-0" id="currentStatus"></p>
+                        </div>
+                        <div class="form-group">
+                            <label for="newStatus" class="required">변경할 상태</label>
+                            <select id="newStatus" name="newStatus" class="form-control"></select>
+                        </div>
+                        <div class="form-group mb-0">
+                            <label for="changeReason" class="required">변경 사유</label>
+                            <input type="text" id="changeReason" name="changeReason" class="form-control" maxlength="30"
+                                   list="reasonExamples" placeholder="예: 청소 완료">
+                            <datalist id="reasonExamples">
+                                <option value="체크인"></option>
+                                <option value="체크아웃"></option>
+                                <option value="청소 시작"></option>
+                                <option value="청소 완료"></option>
+                            </datalist>
+                            <small class="form-text text-muted">30자 이내</small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">취소</button>
+                        <button type="submit" class="btn btn-primary">변경</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+      const API_URL = '/api/rooms';
+      // 상태 값 → 화면 이름·배지 색 (AdminLTE badge 색). 정의서 ROM-001 의 네 가지
+      const STATUS = {
+        VACANT: { label: '빈방', color: 'success' },
+        CLEANING_NEEDED: { label: '청소필요', color: 'warning' },
+        CLEANING: { label: '청소중', color: 'info' },
+        OCCUPIED: { label: '투숙중', color: 'secondary' },
+      };
+
+      const statusForm = document.getElementById('statusForm');
+      let currentPage = 0;
+      let roomId = null; // 팝업이 열려 있는 객실
+      let roomsById = {}; // 지금 페이지의 객실. 버튼에는 id 만 넣고 나머지는 여기서 꺼냅니다
+
+      function badge(status) {
+        const s = STATUS[status];
+        return s ? `<span class="badge badge-${s.color}">${s.label}</span>` : esc(status);
+      }
+
+      document.getElementById('legend').innerHTML = Object.keys(STATUS)
+        .map(key => `<span class="mr-3">${badge(key)}</span>`).join('');
+
+      async function load(page) {
+        try {
+          const result = await api('GET', `${API_URL}?page=${page}`);
+          if (result.content.length === 0 && page > 0) return load(page - 1);
+          currentPage = page;
+          roomsById = Object.fromEntries(result.content.map(room => [room.id, room]));
+          renderRows(document.getElementById('rows'), result.content, room => `
+            <tr>
+              <td>${esc(room.roomNumber)}</td>
+              <td>${esc(room.roomType)}</td>
+              <td>${room.maxOccupancy}명</td>
+              <td>${formatMoney(room.basePrice)}</td>
+              <td>${badge(room.status)}</td>
+              <td>${room.statusUpdatedAt ? formatDateTime(room.statusUpdatedAt) : '-'}</td>
+              <td>
+                <button type="button" class="btn btn-outline-primary btn-xs"
+                        onclick="openStatusModal(${room.id})">상태 변경</button>
+              </td>
+            </tr>`);
+          renderPagination(document.getElementById('pagination'), result, load);
+        } catch (error) {
+          showError(error);
+        }
+      }
+
+      // 표에 보이던 상태를 previousStatus 로 넣어 둡니다. 그 사이 바뀌었으면 서버가 반려합니다.
+      function openStatusModal(id) {
+        const { status, roomNumber } = roomsById[id];
+        roomId = id;
+        clearFormError(statusForm);
+        statusForm.reset();
+        statusForm.elements.previousStatus.value = status;
+        document.getElementById('statusModalTitle').textContent = `${roomNumber}호 상태 변경`;
+        document.getElementById('currentStatus').innerHTML = badge(status);
+        // 같은 상태로는 바꿀 수 없어서(서버도 반려) 현재 상태는 고를 수 없게 뺍니다
+        document.getElementById('newStatus').innerHTML = '<option value="">선택해 주세요</option>' +
+          Object.keys(STATUS).filter(key => key !== status)
+            .map(key => `<option value="${key}">${STATUS[key].label}</option>`).join('');
+        $('#statusModal').modal('show');
+      }
+
+      statusForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        clearFormError(statusForm);
+        try {
+          await api('PUT', `${API_URL}/${roomId}/status`, formToJson(statusForm));
+          $('#statusModal').modal('hide');
+          toast('저장되었습니다.');
+          load(currentPage);
+        } catch (error) {
+          showFormError(statusForm, error); // 동시 변경 충돌·같은 상태 반려 메시지도 팝업 위에 뜹니다
+          load(currentPage); // 다른 담당자가 바꾼 최신 상태를 표에 반영
+        }
+      });
+
+      load(0);
+    </script>
+</section>
+</body>
+</html>
