@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<!--/*
+  추가 요금 등록 SCR-PAY-02 (/admin/additional-charges) — 추가 요금 목록 + 등록·수정 팝업.
+  가이드북 목록(guidebooks/list.html)·편집 폼(form.html)과 청소 스케줄(housekeeping-tasks/list.html)을 따라 만들었습니다.
+
+  이 화면이 하는 일
+    GET /api/additional-charges?page= 로 20건씩 불러와 표로 그립니다. 정산 여부는 색 배지(미정산은 노랑)로 보여 줍니다.
+    [추가 요금 등록] → 팝업 → POST /api/additional-charges
+    [수정]           → 같은 팝업에 지금 값을 채워 → PUT /api/additional-charges/{id}
+    "기존 결제에 합산"을 체크하면 합산할 결제를 고르는 칸이 나옵니다. 예약 ID 를 넣으면 그 예약의 결제 완료(COMPLETED) 결제만
+    목록에 넣습니다. 서버도 같은 예약·결제 완료 건에만 합산을 허용합니다(PAY-002, #27).
+
+  가이드북과 다른 점
+    - 삭제 버튼 없음 — 추가 요금은 삭제 기능이 없는 테이블
+    - 검색 조건 없음 — 추가 요금 목록 API 에 필터가 없음
+    - 예약은 ID 로 입력 — 예약 목록 화면·API 는 예약 담당(팀원 B)이 만드는 중
+    - 화면목록정의서 비고 "체크아웃 화면에서도 진입"은 체크인/체크아웃 화면(SCR-RSV-05, 팀원 B)이 생긴 뒤 그쪽에서 이 팝업을 열도록 맞춤
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{admin/layout :: layout('추가 요금 등록', ~{::section})}">
+<body>
+<section class="content">
+    <div class="container-fluid">
+        <div class="card">
+            <div class="card-header d-flex align-items-center">
+                <button type="button" class="btn btn-primary btn-sm ml-auto" onclick="openChargeModal()">추가 요금 등록</button>
+            </div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                    <tr>
+                        <th style="width: 150px">발생 일시</th>
+                        <th style="width: 90px">예약 ID</th>
+                        <th style="width: 130px">요금 유형</th>
+                        <th>상세 내역</th>
+                        <th style="width: 120px">금액</th>
+                        <th style="width: 130px">청구</th>
+                        <th style="width: 90px">정산</th>
+                        <th style="width: 80px">관리</th>
+                    </tr>
+                    </thead>
+                    <tbody id="rows"></tbody>
+                </table>
+            </div>
+            <div class="card-footer" id="pagination"></div>
+        </div>
+    </div>
+
+    <!--/* 등록·수정 팝업. name = AdditionalChargeCreateRequest / UpdateRequest 필드명 */-->
+    <div class="modal fade" id="chargeModal" tabindex="-1" role="dialog" aria-labelledby="chargeModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <form id="chargeForm" novalidate>
+                    <div class="modal-header">
+                        <h2 class="modal-title h5" id="chargeModalTitle">추가 요금 등록</h2>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none" data-form-error></div>
+                        <div class="form-group">
+                            <label for="reservationId" class="required">예약 ID</label>
+                            <input type="number" id="reservationId" name="reservationId" class="form-control w-auto" min="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="chargeType" class="required">요금 유형</label>
+                            <select id="chargeType" name="chargeType" class="form-control">
+                                <option value="">선택해 주세요</option>
+                                <option value="MINIBAR">미니바</option>
+                                <option value="EARLY_CHECKIN">얼리 체크인</option>
+                                <option value="LATE_CHECKOUT">레이트 체크아웃</option>
+                                <option value="SERVICE">부대 서비스</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="amount" class="required">금액(원)</label>
+                            <input type="number" id="amount" name="amount" class="form-control w-auto" min="0" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="description">상세 내역</label>
+                            <input type="text" id="description" name="description" class="form-control" maxlength="255"
+                                   placeholder="예: 생수 2병, 맥주 1캔">
+                        </div>
+                        <div class="form-check">
+                            <input type="checkbox" id="isMerged" name="isMerged" class="form-check-input">
+                            <label for="isMerged" class="form-check-label">기존 결제에 합산</label>
+                        </div>
+                        <div class="form-group mt-2" id="paymentGroup">
+                            <label for="paymentId" class="required">합산할 결제</label>
+                            <select id="paymentId" name="paymentId" class="form-control"></select>
+                            <small class="form-text text-muted">이 예약의 결제 완료 건만 나옵니다</small>
+                        </div>
+                        <div class="form-check mt-2">
+                            <input type="checkbox" id="isSettled" name="isSettled" class="form-check-input">
+                            <label for="isSettled" class="form-check-label">정산(청구) 완료</label>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">취소</button>
+                        <button type="submit" class="btn btn-primary">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+      const API_URL = '/api/additional-charges';
+      const PAYMENTS_URL = '/api/payments';
+      const TYPE_LABELS = { MINIBAR: '미니바', EARLY_CHECKIN: '얼리 체크인', LATE_CHECKOUT: '레이트 체크아웃', SERVICE: '부대 서비스' };
+
+      const chargeForm = document.getElementById('chargeForm');
+      const reservationInput = document.getElementById('reservationId');
+      const mergedInput = document.getElementById('isMerged');
+      const paymentSelect = document.getElementById('paymentId');
+      let currentPage = 0;
+      let chargesById = {}; // 지금 페이지의 추가 요금. 버튼에는 id 만 넣고 나머지는 여기서 꺼냅니다
+      let editingId = null; // 수정 중인 추가 요금. 등록이면 null
+
+      async function load(page) {
+        try {
+          const result = await api('GET', `${API_URL}?page=${page}`);
+          if (result.content.length === 0 && page > 0) return load(page - 1);
+          currentPage = page;
+          chargesById = Object.fromEntries(result.content.map(c => [c.id, c]));
+          renderRows(document.getElementById('rows'), result.content, c => `
+            <tr>
+              <td>${formatDateTime(c.chargedAt)}</td>
+              <td>${c.reservationId}</td>
+              <td>${TYPE_LABELS[c.chargeType] ?? esc(c.chargeType)}</td>
+              <td>${esc(c.description ?? '')}</td>
+              <td>${formatMoney(c.amount)}</td>
+              <td>${c.isMerged ? `결제 #${c.paymentId}에 합산` : '별도 청구'}</td>
+              <td>${c.isSettled ? '<span class="badge badge-success">완료</span>' : '<span class="badge badge-warning">미정산</span>'}</td>
+              <td><button type="button" class="btn btn-outline-secondary btn-xs" onclick="openChargeModal(${c.id})">수정</button></td>
+            </tr>`);
+          renderPagination(document.getElementById('pagination'), result, load);
+        } catch (error) {
+          showError(error);
+        }
+      }
+
+      // 예약 ID 의 결제 완료 결제로 "합산할 결제" 목록을 채웁니다.
+      // 결제 목록 API 에 예약 필터가 없어서 끝 페이지까지 불러 화면에서 고릅니다.
+      async function loadPayments(reservationId) {
+        paymentSelect.innerHTML = '<option value="">선택해 주세요</option>';
+        if (!reservationId) return;
+        const payments = [];
+        for (let page = 0; ; page++) {
+          const result = await api('GET', `${PAYMENTS_URL}?page=${page}`);
+          payments.push(...result.content.filter(p =>
+            p.reservationId === Number(reservationId) && p.paymentStatus === 'COMPLETED'));
+          if (page + 1 >= result.totalPages) break;
+        }
+        paymentSelect.innerHTML += payments.map(p =>
+          `<option value="${p.id}">#${p.id} · ${formatMoney(p.paymentAmount)} · ${formatDate(p.createdAt)}</option>`).join('');
+      }
+
+      function toggleMerged() {
+        document.getElementById('paymentGroup').classList.toggle('d-none', !mergedInput.checked);
+      }
+
+      mergedInput.addEventListener('change', toggleMerged);
+      reservationInput.addEventListener('change', () => loadPayments(reservationInput.value).catch(showError));
+
+      // id 가 없으면 등록, 있으면 수정(지금 값을 채움)
+      async function openChargeModal(id) {
+        editingId = id ?? null;
+        clearFormError(chargeForm);
+        chargeForm.reset();
+        document.getElementById('chargeModalTitle').textContent = id ? '추가 요금 수정' : '추가 요금 등록';
+        paymentSelect.innerHTML = '<option value="">선택해 주세요</option>';
+        if (id) {
+          const c = chargesById[id];
+          try {
+            await loadPayments(c.reservationId); // 결제 목록을 먼저 채워야 fillForm 이 paymentId 를 고를 수 있음
+          } catch (error) {
+            showError(error);
+          }
+          fillForm(chargeForm, c);
+        }
+        toggleMerged();
+        $('#chargeModal').modal('show');
+      }
+
+      chargeForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        clearFormError(chargeForm);
+        const body = formToJson(chargeForm);
+        if (!body.isMerged) body.paymentId = null; // 별도 청구면 결제를 보내지 않음(서버도 반려)
+        try {
+          if (editingId) await api('PUT', `${API_URL}/${editingId}`, body);
+          else await api('POST', API_URL, body);
+          $('#chargeModal').modal('hide');
+          toast('저장되었습니다.');
+          load(editingId ? currentPage : 0);
+        } catch (error) {
+          showFormError(chargeForm, error);
+        }
+      });
+
+      load(0);
+    </script>
+</section>
+</body>
+</html>
