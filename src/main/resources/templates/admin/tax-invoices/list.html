@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<!--/*
+  영수증 / 세금계산서 SCR-PAY-04 (/admin/tax-invoices) — 발행 목록 + 발행 요청 등록·수정 팝업 + 발행 상태 변경 팝업.
+  가이드북 목록(guidebooks/list.html)·편집 폼(form.html)과 추가 요금 등록(additional-charges/list.html)을 따라 만들었습니다.
+
+  이 화면이 하는 일
+    GET /api/tax-invoices?page= 로 20건씩 불러와 표로 그립니다. 발행 상태는 색 배지, 실패 사유는 "오류 내역" 칸에 보여 줍니다.
+    [발행 요청 등록] → 팝업 → POST /api/tax-invoices. 결제는 결제 완료(COMPLETED) 결제만 고를 수 있습니다(서버도 같은 규칙으로 발행).
+      세금 계산서면 사업자 등록 번호(필수)·상호명 칸, 현금 영수증이면 고객 식별 번호 칸만 보입니다.
+    [수정] → 같은 팝업에 지금 값을 채워 → PUT /api/tax-invoices/{id}. 발행 완료된 문서는 서버가 막아서 버튼을 숨깁니다.
+    발행 상태 버튼 → 확인 팝업 → PUT /api/tax-invoices/{id}/status (PAY-004, #23)
+      발행 요청 → [발행 완료] [발행 실패(사유 필수)],  발행 실패 → [재시도] (화면목록정의서 "발행 실패 시 재시도 버튼")
+
+  가이드북과 다른 점
+    - 삭제 버튼 없음 — 삭제 기능이 없는 테이블
+    - 검색 조건 없음 — 목록 API 에 필터가 없음
+    - 실제 발행(국세청·현금영수증 시스템 연동)은 1차 범위가 아니라, 담당자가 발행 결과를 직접 표시합니다(#23 리뷰)
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{admin/layout :: layout('영수증 / 세금계산서', ~{::section})}">
+<body>
+<section class="content">
+    <div class="container-fluid">
+        <div class="card">
+            <div class="card-header d-flex align-items-center flex-wrap">
+                <div id="legend"></div>
+                <button type="button" class="btn btn-primary btn-sm ml-auto" onclick="openInvoiceModal()">발행 요청 등록</button>
+            </div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                    <tr>
+                        <th style="width: 110px">요청일</th>
+                        <th style="width: 80px">결제</th>
+                        <th style="width: 110px">발행 유형</th>
+                        <th>발행 대상</th>
+                        <th style="width: 100px">상태</th>
+                        <th style="width: 150px">발행 일시</th>
+                        <th>오류 내역</th>
+                        <th style="width: 190px">관리</th>
+                    </tr>
+                    </thead>
+                    <tbody id="rows"></tbody>
+                </table>
+            </div>
+            <div class="card-footer" id="pagination"></div>
+        </div>
+    </div>
+
+    <!--/* 발행 요청 등록·수정 팝업. name = TaxInvoiceCreateRequest / UpdateRequest 필드명 */-->
+    <div class="modal fade" id="invoiceModal" tabindex="-1" role="dialog" aria-labelledby="invoiceModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <form id="invoiceForm" novalidate>
+                    <div class="modal-header">
+                        <h2 class="modal-title h5" id="invoiceModalTitle">발행 요청 등록</h2>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none" data-form-error></div>
+                        <!--/* 수정할 때 지금 오류 내역을 그대로 다시 보내려고 숨겨 둠(PUT 은 통째로 바꾸기) */-->
+                        <input type="hidden" name="errorNote">
+                        <div class="form-group">
+                            <label for="paymentId" class="required">결제</label>
+                            <select id="paymentId" name="paymentId" class="form-control"></select>
+                            <small class="form-text text-muted">결제 완료 건만 나옵니다</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="issueType" class="required">발행 유형</label>
+                            <select id="issueType" name="issueType" class="form-control">
+                                <option value="">선택해 주세요</option>
+                                <option value="TAX_INVOICE">세금 계산서</option>
+                                <option value="CASH_RECEIPT">현금 영수증</option>
+                            </select>
+                        </div>
+                        <div data-for="TAX_INVOICE">
+                            <div class="form-group">
+                                <label for="businessNumber" class="required">사업자 등록 번호</label>
+                                <input type="text" id="businessNumber" name="businessNumber" class="form-control" maxlength="20"
+                                       placeholder="예: 123-45-67890">
+                            </div>
+                            <div class="form-group">
+                                <label for="businessName">상호명</label>
+                                <input type="text" id="businessName" name="businessName" class="form-control" maxlength="100">
+                            </div>
+                        </div>
+                        <div class="form-group" data-for="CASH_RECEIPT">
+                            <label for="customerIdNumber">고객 식별 번호</label>
+                            <input type="text" id="customerIdNumber" name="customerIdNumber" class="form-control" maxlength="20"
+                                   placeholder="예: 휴대 전화 번호">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">취소</button>
+                        <button type="submit" class="btn btn-primary">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!--/* 발행 상태 변경 팝업. 발행 실패일 때만 사유 칸이 보입니다. name = TaxInvoiceStatusChangeRequest 필드명 */-->
+    <div class="modal fade" id="statusModal" tabindex="-1" role="dialog" aria-labelledby="statusModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <form id="statusForm" novalidate>
+                    <div class="modal-header">
+                        <h2 class="modal-title h5" id="statusModalTitle"></h2>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none" data-form-error></div>
+                        <p class="mb-2" id="statusMessage"></p>
+                        <div class="form-group mb-0" id="failNoteGroup">
+                            <label for="statusErrorNote" class="required">실패 사유</label>
+                            <input type="text" id="statusErrorNote" name="errorNote" class="form-control" maxlength="255"
+                                   placeholder="예: 사업자 번호 조회 실패">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">취소</button>
+                        <button type="submit" class="btn btn-primary" id="statusSubmit">확인</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+      const API_URL = '/api/tax-invoices';
+      const PAYMENTS_URL = '/api/payments';
+      const STATUS = {
+        REQUESTED: { label: '발행 요청', color: 'warning' },
+        ISSUED: { label: '발행 완료', color: 'success' },
+        FAILED: { label: '발행 실패', color: 'danger' },
+      };
+      const TYPE_LABELS = { TAX_INVOICE: '세금 계산서', CASH_RECEIPT: '현금 영수증' };
+      // 상태 변경 버튼. 서버도 요청 → 완료·실패, 실패 → 재요청만 허용합니다
+      const ACTIONS = {
+        issue: { newStatus: 'ISSUED', title: '발행 완료', color: 'success',
+          message: '발행을 마쳤으면 발행 완료로 표시합니다. 발행 일시는 지금으로 저장되고, 이후에는 수정할 수 없습니다.' },
+        fail: { newStatus: 'FAILED', title: '발행 실패', color: 'danger', withNote: true,
+          message: '발행에 실패했으면 사유를 남기고 발행 실패로 표시합니다.' },
+        retry: { newStatus: 'REQUESTED', title: '재시도', color: 'primary',
+          message: '발행 요청 상태로 되돌려 다시 발행합니다. 이전 실패 사유는 발행 완료될 때까지 남아 있습니다.' },
+      };
+
+      const invoiceForm = document.getElementById('invoiceForm');
+      const statusForm = document.getElementById('statusForm');
+      const paymentSelect = document.getElementById('paymentId');
+      const issueTypeSelect = document.getElementById('issueType');
+      let currentPage = 0;
+      let invoicesById = {}; // 지금 페이지의 문서. 버튼에는 id 만 넣고 나머지는 여기서 꺼냅니다
+      let editingId = null; // 수정 중인 문서. 등록이면 null
+      let statusTarget = null; // 상태 변경 팝업이 열려 있는 { id, action }
+
+      function badge(status) {
+        const s = STATUS[status];
+        return s ? `<span class="badge badge-${s.color}">${s.label}</span>` : esc(status);
+      }
+
+      document.getElementById('legend').innerHTML = Object.keys(STATUS)
+        .map(key => `<span class="mr-3">${badge(key)}</span>`).join('');
+
+      // 발행 대상: 세금 계산서는 상호명·사업자 번호, 현금 영수증은 고객 식별 번호
+      function targetCell(t) {
+        if (t.issueType === 'TAX_INVOICE') {
+          return `${esc(t.businessName ?? '')} <span class="text-muted">${esc(t.businessNumber ?? '')}</span>`;
+        }
+        return esc(t.customerIdNumber ?? '-');
+      }
+
+      function buttons(t) {
+        const button = (action, label, color) =>
+          `<button type="button" class="btn btn-outline-${color} btn-xs" onclick="openStatusModal(${t.id}, '${action}')">${label}</button>`;
+        const edit = `<button type="button" class="btn btn-outline-secondary btn-xs" onclick="openInvoiceModal(${t.id})">수정</button>`;
+        if (t.issueStatus === 'REQUESTED') return `${button('issue', '발행 완료', 'success')} ${button('fail', '발행 실패', 'danger')} ${edit}`;
+        if (t.issueStatus === 'FAILED') return `${button('retry', '재시도', 'primary')} ${edit}`;
+        return ''; // 발행 완료는 바꿀 수 없음
+      }
+
+      async function load(page) {
+        try {
+          const result = await api('GET', `${API_URL}?page=${page}`);
+          if (result.content.length === 0 && page > 0) return load(page - 1);
+          currentPage = page;
+          invoicesById = Object.fromEntries(result.content.map(t => [t.id, t]));
+          renderRows(document.getElementById('rows'), result.content, t => `
+            <tr>
+              <td>${formatDate(t.createdAt)}</td>
+              <td>#${t.paymentId}</td>
+              <td>${TYPE_LABELS[t.issueType] ?? esc(t.issueType)}</td>
+              <td>${targetCell(t)}</td>
+              <td>${badge(t.issueStatus)}</td>
+              <td>${t.issuedAt ? formatDateTime(t.issuedAt) : '-'}</td>
+              <td>${esc(t.errorNote ?? '')}</td>
+              <td>${buttons(t)}</td>
+            </tr>`);
+          renderPagination(document.getElementById('pagination'), result, load);
+        } catch (error) {
+          showError(error);
+        }
+      }
+
+      // 결제 완료 결제로 "결제" 선택 칸을 채웁니다. 결제 목록 API 에 상태 필터가 없어 끝 페이지까지 불러 고릅니다.
+      // 수정할 때 지금 결제가 이미 결제 완료가 아니어도 칸에 남도록 keepId 를 함께 넣습니다(저장하면 서버가 판단).
+      async function loadPayments(keepId) {
+        const payments = [];
+        for (let page = 0; ; page++) {
+          const result = await api('GET', `${PAYMENTS_URL}?page=${page}`);
+          payments.push(...result.content.filter(p => p.paymentStatus === 'COMPLETED' || p.id === keepId));
+          if (page + 1 >= result.totalPages) break;
+        }
+        paymentSelect.innerHTML = '<option value="">선택해 주세요</option>' + payments.map(p =>
+          `<option value="${p.id}">#${p.id} · 예약 ${p.reservationId} · ${formatMoney(p.paymentAmount)} · ${formatDate(p.createdAt)}</option>`).join('');
+      }
+
+      // 발행 유형에 맞는 칸만 보이게. 숨긴 칸은 비워서 보내지 않습니다
+      function toggleTypeFields() {
+        for (const group of invoiceForm.querySelectorAll('[data-for]')) {
+          const visible = group.dataset.for === issueTypeSelect.value;
+          group.classList.toggle('d-none', !visible);
+        }
+      }
+
+      issueTypeSelect.addEventListener('change', toggleTypeFields);
+
+      // id 가 없으면 등록, 있으면 수정(지금 값을 채움)
+      async function openInvoiceModal(id) {
+        editingId = id ?? null;
+        clearFormError(invoiceForm);
+        invoiceForm.reset();
+        invoiceForm.elements.errorNote.value = '';
+        document.getElementById('invoiceModalTitle').textContent = id ? '발행 요청 수정' : '발행 요청 등록';
+        try {
+          await loadPayments(id ? invoicesById[id].paymentId : null); // 선택 칸을 먼저 채워야 fillForm 이 고를 수 있음
+        } catch (error) {
+          showError(error);
+        }
+        if (id) fillForm(invoiceForm, invoicesById[id]);
+        toggleTypeFields();
+        $('#invoiceModal').modal('show');
+      }
+
+      invoiceForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        clearFormError(invoiceForm);
+        const body = formToJson(invoiceForm);
+        if (body.issueType !== 'TAX_INVOICE') { body.businessNumber = null; body.businessName = null; }
+        if (body.issueType !== 'CASH_RECEIPT') body.customerIdNumber = null;
+        try {
+          if (editingId) await api('PUT', `${API_URL}/${editingId}`, body);
+          else await api('POST', API_URL, body);
+          $('#invoiceModal').modal('hide');
+          toast('저장되었습니다.');
+          load(editingId ? currentPage : 0);
+        } catch (error) {
+          showFormError(invoiceForm, error);
+        }
+      });
+
+      function openStatusModal(id, actionKey) {
+        const action = ACTIONS[actionKey];
+        statusTarget = { id, action };
+        clearFormError(statusForm);
+        statusForm.reset();
+        document.getElementById('statusModalTitle').textContent = action.title;
+        document.getElementById('statusMessage').textContent = action.message;
+        document.getElementById('failNoteGroup').classList.toggle('d-none', !action.withNote);
+        const submit = document.getElementById('statusSubmit');
+        submit.textContent = action.title;
+        submit.className = `btn btn-${action.color}`;
+        $('#statusModal').modal('show');
+      }
+
+      statusForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        clearFormError(statusForm);
+        const { id, action } = statusTarget;
+        const body = { newStatus: action.newStatus, errorNote: action.withNote ? statusForm.elements.errorNote.value || null : null };
+        try {
+          await api('PUT', `${API_URL}/${id}/status`, body);
+          $('#statusModal').modal('hide');
+          toast('저장되었습니다.');
+          load(currentPage);
+        } catch (error) {
+          showFormError(statusForm, error); // 결제가 결제 완료가 아니면 서버 반려 문구가 팝업 위에
+          load(currentPage);
+        }
+      });
+
+      load(0);
+    </script>
+</section>
+</body>
+</html>
