@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<!--/*
+  결제 / 환불 내역 SCR-PAY-01 (/admin/payments) + 환불 팝업.
+  가이드북 목록(guidebooks/list.html)과 객실 현황 보드(rooms/list.html)를 따라 만들었습니다. 화면 유형 ① 목록 + ③ 팝업(입력).
+
+  이 화면이 하는 일
+    GET /api/payments?page= 로 20건씩 불러와 표로 그립니다. 결제 상태는 색 배지로,
+    환불 결과(전액·부분·거절, 환불액, 거절 사유)는 "환불" 칸에 보여 줍니다(화면목록정의서 "환불 규정 자동 적용 결과 표시").
+    상태에 따라 버튼이 다릅니다. 바꿀 수 있는 상태는 서버(PaymentStatus.canChangeTo)가 정하고, 화면은 버튼만 고릅니다.
+      결제 완료   → [환불 요청]            PUT /api/payments/{id}/refund-request
+      환불 요청   → [환불 처리] [환불 거절]  PUT /api/payments/{id}/refund · /refund-rejection (거절은 사유 필수)
+      그 밖       → 버튼 없음 (끝난 상태)
+    팝업에서 [확인] → API → 팝업 닫기 → 토스트 → 지금 페이지 다시 불러오기.
+    환불 처리의 전액·부분 판단과 환불액 계산은 서버가 합니다. 화면은 결과만 보여 줍니다.
+
+  가이드북과 다른 점
+    - 등록·수정·삭제 버튼 없음 — 결제 등록·수정 화면은 1차 범위가 아니고, 결제는 삭제 기능이 없는 테이블
+    - 검색 조건 없음 — 결제 목록 API 에 필터가 없음
+    - layout 의 #confirmModal(confirmDelete)은 버튼이 [삭제] 로 고정이라, 환불용 팝업 #refundModal 을 따로 둠
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{admin/layout :: layout('결제 / 환불 내역', ~{::section})}">
+<body>
+<section class="content">
+    <div class="container-fluid">
+        <div class="card">
+            <div class="card-header d-flex align-items-center flex-wrap" id="legend"></div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                    <tr>
+                        <th style="width: 110px">결제일</th>
+                        <th style="width: 90px">예약 ID</th>
+                        <th style="width: 110px">결제 수단</th>
+                        <th style="width: 130px">결제 금액</th>
+                        <th style="width: 130px">실매출</th>
+                        <th style="width: 100px">상태</th>
+                        <th>환불</th>
+                        <th style="width: 170px">관리</th>
+                    </tr>
+                    </thead>
+                    <tbody id="rows"></tbody>
+                </table>
+            </div>
+            <div class="card-footer" id="pagination"></div>
+        </div>
+    </div>
+
+    <!--/* 환불 팝업 하나를 요청·처리·거절 세 가지로 씁니다. 거절일 때만 사유 칸이 보입니다 */-->
+    <div class="modal fade" id="refundModal" tabindex="-1" role="dialog" aria-labelledby="refundModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <form id="refundForm" novalidate>
+                    <div class="modal-header">
+                        <h2 class="modal-title h5" id="refundModalTitle"></h2>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none" data-form-error></div>
+                        <p class="mb-2" id="refundMessage"></p>
+                        <!--/* name = PaymentRefundRejectRequest 필드명 */-->
+                        <div class="form-group mb-0" id="reasonGroup">
+                            <label for="reason" class="required">거절 사유</label>
+                            <input type="text" id="reason" name="reason" class="form-control" maxlength="255"
+                                   placeholder="예: 규정 외 요청">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">취소</button>
+                        <button type="submit" class="btn btn-primary" id="refundSubmit">확인</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+      const API_URL = '/api/payments';
+      // 결제 상태 → 화면 이름·배지 색. 정의서 payment_status 의 다섯 가지
+      const STATUS = {
+        COMPLETED: { label: '결제 완료', color: 'success' },
+        FAILED: { label: '결제 실패', color: 'danger' },
+        REFUND_REQUESTED: { label: '환불 요청', color: 'warning' },
+        REFUNDED: { label: '환불 완료', color: 'secondary' },
+        PARTIALLY_REFUNDED: { label: '부분 환불', color: 'info' },
+      };
+      const RULE_LABELS = { FULL: '전액', PARTIAL: '부분', NONE: '거절' };
+      // 팝업 세 가지. path 는 API 주소 끝, withReason 이면 거절 사유를 보냄
+      const ACTIONS = {
+        request: {
+          title: '환불 요청', path: 'refund-request', button: '환불 요청', buttonColor: 'warning',
+          message: p => `${formatMoney(p.paymentAmount)} 결제를 환불 요청 상태로 바꿉니다. 요청일은 오늘로 저장됩니다.`,
+        },
+        refund: {
+          title: '환불 처리', path: 'refund', button: '환불 처리', buttonColor: 'primary',
+          message: p => `환불 요청일(${formatDate(p.refundRequestDate)})이 체크인 3일 전까지면 전액, 그 뒤면 부분 환불로 서버가 계산합니다.`,
+        },
+        reject: {
+          title: '환불 거절', path: 'refund-rejection', button: '환불 거절', buttonColor: 'danger', withReason: true,
+          message: () => '환불 요청을 거절하고 결제 완료로 되돌립니다.',
+        },
+      };
+
+      const refundForm = document.getElementById('refundForm');
+      let currentPage = 0;
+      let paymentsById = {}; // 지금 페이지의 결제. 버튼에는 id 만 넣고 나머지는 여기서 꺼냅니다
+      let opened = null; // 팝업이 열려 있는 { id, action }
+
+      function badge(status) {
+        const s = STATUS[status];
+        return s ? `<span class="badge badge-${s.color}">${s.label}</span>` : esc(status);
+      }
+
+      document.getElementById('legend').innerHTML = Object.keys(STATUS)
+        .map(key => `<span class="mr-3">${badge(key)}</span>`).join('');
+
+      // "환불" 칸: 요청일 → 결과(전액·부분 + 환불액) → 거절 사유
+      function refundCell(p) {
+        const lines = [];
+        if (p.refundRequestDate) lines.push(`요청 ${formatDate(p.refundRequestDate)}`);
+        if (p.refundRuleApplied && p.refundRuleApplied !== 'NONE') {
+          lines.push(`<b>${RULE_LABELS[p.refundRuleApplied]} ${formatMoney(p.refundAmount)}</b>`);
+        }
+        if (p.refundRuleApplied === 'NONE') lines.push(`거절: ${esc(p.errorNote)}`);
+        return lines.length ? lines.join('<br>') : '-';
+      }
+
+      function buttons(p) {
+        const button = (action, label, color) =>
+          `<button type="button" class="btn btn-outline-${color} btn-xs" onclick="openRefundModal(${p.id}, '${action}')">${label}</button>`;
+        if (p.paymentStatus === 'COMPLETED') return button('request', '환불 요청', 'warning');
+        if (p.paymentStatus === 'REFUND_REQUESTED') {
+          return button('refund', '환불 처리', 'primary') + ' ' + button('reject', '환불 거절', 'danger');
+        }
+        return '';
+      }
+
+      async function load(page) {
+        try {
+          const result = await api('GET', `${API_URL}?page=${page}`);
+          if (result.content.length === 0 && page > 0) return load(page - 1);
+          currentPage = page;
+          paymentsById = Object.fromEntries(result.content.map(p => [p.id, p]));
+          renderRows(document.getElementById('rows'), result.content, p => `
+            <tr>
+              <td>${formatDate(p.createdAt)}</td>
+              <td>${p.reservationId}</td>
+              <td>${esc(p.paymentMethod)}</td>
+              <td>${formatMoney(p.paymentAmount)}</td>
+              <td>${formatMoney(p.netRevenue)}</td>
+              <td>${badge(p.paymentStatus)}</td>
+              <td>${refundCell(p)}</td>
+              <td>${buttons(p)}</td>
+            </tr>`);
+          renderPagination(document.getElementById('pagination'), result, load);
+        } catch (error) {
+          showError(error);
+        }
+      }
+
+      function openRefundModal(id, actionKey) {
+        const action = ACTIONS[actionKey];
+        opened = { id, action };
+        clearFormError(refundForm);
+        refundForm.reset();
+        document.getElementById('refundModalTitle').textContent = action.title;
+        document.getElementById('refundMessage').textContent = action.message(paymentsById[id]);
+        document.getElementById('reasonGroup').classList.toggle('d-none', !action.withReason);
+        const submit = document.getElementById('refundSubmit');
+        submit.textContent = action.button;
+        submit.className = `btn btn-${action.buttonColor}`;
+        $('#refundModal').modal('show');
+      }
+
+      refundForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        clearFormError(refundForm);
+        const { id, action } = opened;
+        try {
+          await api('PUT', `${API_URL}/${id}/${action.path}`, action.withReason ? formToJson(refundForm) : undefined);
+          $('#refundModal').modal('hide');
+          toast('저장되었습니다.');
+          load(currentPage);
+        } catch (error) {
+          showFormError(refundForm, error); // 상태가 그 사이 바뀌었으면 서버 반려 문구가 팝업 위에 뜹니다
+          load(currentPage);
+        }
+      });
+
+      load(0);
+    </script>
+</section>
+</body>
+</html>
