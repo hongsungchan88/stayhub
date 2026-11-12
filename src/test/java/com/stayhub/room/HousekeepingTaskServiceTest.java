@@ -72,7 +72,7 @@ class HousekeepingTaskServiceTest {
 	@Test
 	@DisplayName("등록하면 목록에 나온다")
 	void createThenAppearsInList() {
-		HousekeepingTaskResponse created = housekeepingTaskService.create(createRequest(1L));
+		HousekeepingTaskResponse created = housekeepingTaskService.create(createRequest(createRoom()));
 
 		PageResponse<HousekeepingTaskResponse> all = housekeepingTaskService.getList(0);
 		assertThat(all.content()).extracting(HousekeepingTaskResponse::id).containsExactly(created.id());
@@ -87,18 +87,35 @@ class HousekeepingTaskServiceTest {
 	@Test
 	@DisplayName("수정하면 바뀐 값이 조회된다")
 	void updateIsApplied() {
-		HousekeepingTaskResponse created = housekeepingTaskService.create(createRequest(1L));
+		HousekeepingTaskResponse created = housekeepingTaskService.create(createRequest(createRoom()));
+		Long otherRoomId = createRoom("HK-102");
 
 		LocalDateTime newScheduledAt = SCHEDULED_AT.plusHours(2);
 		housekeepingTaskService.update(created.id(), new HousekeepingTaskUpdateRequest(
-				2L, HousekeepingTaskType.INSPECTION, CHECKOUT_TIME, 5L, true, newScheduledAt));
+				otherRoomId, HousekeepingTaskType.INSPECTION, CHECKOUT_TIME, 5L, true, newScheduledAt));
 
 		HousekeepingTaskResponse found = housekeepingTaskService.getDetail(created.id());
-		assertThat(found.roomId()).isEqualTo(2L);
+		assertThat(found.roomId()).isEqualTo(otherRoomId);
 		assertThat(found.taskType()).isEqualTo(HousekeepingTaskType.INSPECTION);
 		assertThat(found.assignedStaffId()).isEqualTo(5L);
 		assertThat(found.isReassigned()).isTrue();
 		assertThat(found.scheduledAt()).isEqualTo(newScheduledAt);
+	}
+
+	@Test
+	@DisplayName("없는 객실로 등록·수정하면 BusinessException 이 나고 저장되지 않는다 (정책 42행)")
+	void missingRoomRejected() {
+		assertThatThrownBy(() -> housekeepingTaskService.create(createRequest(99999L)))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("객실을 찾을 수 없습니다.");
+		assertThat(housekeepingTaskRepository.count()).isZero();
+
+		HousekeepingTaskResponse created = housekeepingTaskService.create(createRequest(createRoom()));
+		assertThatThrownBy(() -> housekeepingTaskService.update(created.id(), new HousekeepingTaskUpdateRequest(
+				99999L, null, CHECKOUT_TIME, null, null, SCHEDULED_AT)))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("객실을 찾을 수 없습니다.");
+		assertThat(housekeepingTaskService.getDetail(created.id()).roomId()).isEqualTo(created.roomId());
 	}
 
 	@Test
@@ -223,7 +240,11 @@ class HousekeepingTaskServiceTest {
 
 	/** 빈방(VACANT) 객실을 만들고 ID 를 돌려줍니다. */
 	private Long createRoom() {
-		return roomService.create(new RoomCreateRequest("HK-101", "싱글", new BigDecimal("50000.00"), 1)).id();
+		return createRoom("HK-101");
+	}
+
+	private Long createRoom(String roomNumber) {
+		return roomService.create(new RoomCreateRequest(roomNumber, "싱글", new BigDecimal("50000.00"), 1)).id();
 	}
 
 	/** 체크아웃이 끝나 청소필요(CLEANING_NEEDED) 상태인 객실을 만들고 ID 를 돌려줍니다. */
