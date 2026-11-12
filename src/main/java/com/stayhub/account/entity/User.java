@@ -31,6 +31,7 @@ import org.hibernate.annotations.ColumnDefault;
  *   <li>로그인 실패 — {@link #recordLoginFailure} (5회째에 30분 잠금)</li>
  *   <li>로그인 성공 — {@link #resetLoginFailures}</li>
  *   <li>잠겨 있는지 확인 — {@link #isLocked}</li>
+ *   <li>비밀번호 변경 — {@link #changePassword} (비밀번호 재설정, ACC-003. <b>암호화한 값</b>을 넘깁니다)</li>
  *   <li>삭제 — {@link #delete} (행은 남기고 status 만 DELETED)</li>
  * </ul>
  *
@@ -152,7 +153,7 @@ public class User extends BaseEntity {
 		}
 	}
 
-	/** 로그인 성공 시 실패 횟수와 잠금을 지웁니다. */
+	/** 로그인 성공 시 실패 횟수와 잠금을 지웁니다. 비밀번호 재설정 성공 시에도 부릅니다(ACC-003). */
 	public void resetLoginFailures() {
 		this.failedAttempts = 0;
 		this.lockoutUntil = null;
@@ -161,6 +162,15 @@ public class User extends BaseEntity {
 	/** {@code now} 시점에 잠겨 있는지. 잠금 해제 시각이 지났으면 false. */
 	public boolean isLocked(LocalDateTime now) {
 		return lockoutUntil != null && now.isBefore(lockoutUntil);
+	}
+
+	/**
+	 * 비밀번호를 바꿉니다. (비밀번호 재설정, ACC-003)
+	 *
+	 * @param encodedPassword {@code PasswordEncoder.encode()} 를 거친 값. 원문을 넣지 마세요.
+	 */
+	public void changePassword(String encodedPassword) {
+		this.password = encodedPassword;
 	}
 
 	/** 소프트 삭제. 행은 그대로 두고 status 만 DELETED 로 바꿉니다. (ACC-005) */

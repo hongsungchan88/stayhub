@@ -25,7 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
  * <ol>
  *   <li>아이디 중복 확인 — {@link #checkLoginId}</li>
  *   <li>인증코드 발송·재전송 — {@link #sendEmailCode} (email_verifications 에 저장, 서버 로그에 코드 출력)</li>
- *   <li>인증코드 확인 — {@link #verifyEmailCode} (최신 코드·만료 확인 후 is_used = true)</li>
+ *   <li>인증코드 확인 — {@link #verifyEmailCode} (최신 코드·만료·틀린 횟수 확인 후 is_used = true)</li>
  *   <li>회원가입 — {@link #signup} (확인된 인증이 있어야 저장. User.create + verifyEmail)</li>
  * </ol>
  *
@@ -40,6 +40,9 @@ public class SignupService {
 
 	/** 인증코드 생성용. 예측하기 어려운 난수를 씁니다. */
 	private static final SecureRandom RANDOM = new SecureRandom();
+
+	/** 인증코드를 5번 틀렸을 때. 그 코드는 무효이고 재전송해야 합니다. */
+	public static final String TOO_MANY_ATTEMPTS = "인증코드를 5번 틀렸습니다. 인증코드를 다시 요청해 주세요.";
 
 	private final UserRepository userRepository;
 	private final EmailVerificationRepository emailVerificationRepository;
@@ -81,8 +84,15 @@ public class SignupService {
 		log.info("[회원가입 인증코드] email={}, code={}, expiresAt={}", request.email(), code, expiresAt);
 	}
 
-	/** 인증코드 확인. 가장 최근 코드와 비교하고, 맞으면 사용 완료로 표시합니다. */
-	@Transactional
+	/**
+	 * 인증코드 확인. 가장 최근 코드와 비교하고, 맞으면 사용 완료로 표시합니다.
+	 * 틀리면 틀린 횟수를 올리고, 5번째로 틀리면 그 코드는 더 이상 쓸 수 없습니다(재전송 필요).
+	 *
+	 * <p><b>{@code noRollbackFor = BusinessException.class} 를 지우지 마세요.</b>
+	 * 틀린 횟수를 올린 뒤 예외를 던지므로, 기본 설정이면 롤백되어 횟수가 저장되지 않습니다.
+	 * (총괄의 {@code LoginService.login} 과 같은 이유)
+	 */
+	@Transactional(noRollbackFor = BusinessException.class)
 	public void verifyEmailCode(EmailCodeVerifyRequest request) {
 		EmailVerification verification = emailVerificationRepository
 				.findTopByEmailAndTypeOrderByIdDesc(request.email(), VerificationType.JOIN)
@@ -94,8 +104,13 @@ public class SignupService {
 		if (verification.isExpired(LocalDateTime.now())) {
 			throw new BusinessException("인증코드가 만료되었습니다. 다시 요청해 주세요.");
 		}
+		if (verification.isAttemptsExceeded()) {
+			throw new BusinessException(TOO_MANY_ATTEMPTS);
+		}
 		if (!verification.getCode().equals(request.code())) {
-			throw new BusinessException("인증코드가 일치하지 않습니다.");
+			verification.recordFailedAttempt();
+			// 이번에 틀려서 한도에 닿았으면(5번째) 바로 재요청 안내
+			throw new BusinessException(verification.isAttemptsExceeded() ? TOO_MANY_ATTEMPTS : "인증코드가 일치하지 않습니다.");
 		}
 
 		verification.markUsed();

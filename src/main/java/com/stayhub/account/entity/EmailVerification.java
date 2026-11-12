@@ -23,7 +23,7 @@ import org.hibernate.annotations.ColumnDefault;
  *
  * <p>{@code created_at} 은 {@link BaseEntity} 가 채웁니다. updated_at 은 정의서에 없지만 BaseEntity 상속으로 생깁니다(총괄 허용).
  *
- * <p>값을 바꾸는 방법은 {@link #create} / {@link #markUsed} 뿐입니다.
+ * <p>값을 바꾸는 방법은 {@link #create} / {@link #markUsed} / {@link #recordFailedAttempt} 뿐입니다.
  *
  * <p><b>시각은 파라미터로 받습니다.</b> 총괄의 {@code User.isLocked(now)} 와 같은 방식입니다.
  * 테스트에서 "24시간 뒤"를 실제로 기다리지 않고 확인하기 위해서입니다.
@@ -36,6 +36,12 @@ public class EmailVerification extends BaseEntity {
 
 	/** 회원가입 인증코드 유효 시간. (정의서 테이블 설명 — 24시간 유효) */
 	public static final long JOIN_VALID_HOURS = 24;
+
+	/** 비밀번호 재설정 토큰 유효 시간. (정의서 테이블 설명·ACC-003 — 30분 유효) */
+	public static final long PASSWORD_RESET_VALID_MINUTES = 30;
+
+	/** 회원가입 인증코드를 이 횟수만큼 틀리면 그 코드는 무효입니다. (ACC-003 작업 때 총괄 확인) */
+	public static final int MAX_FAILED_ATTEMPTS = 5;
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY) // AUTO_INCREMENT
@@ -66,7 +72,16 @@ public class EmailVerification extends BaseEntity {
 	@Column(name = "is_used", nullable = false, columnDefinition = "BOOLEAN")
 	private boolean used;
 
-	/** 새 인증 기록을 만듭니다. 사용 전(false) 상태로 시작합니다. */
+	/**
+	 * 인증코드를 틀린 횟수. {@link #MAX_FAILED_ATTEMPTS} 가 되면 그 코드는 맞는 코드로도 쓸 수 없습니다.
+	 * 정의서에 없던 컬럼입니다 — users.failed_attempts 와 같은 이름·방식으로 추가했습니다(PR 에 기재, 정의서 반영 필요).
+	 * 재전송하면 새 행이 생기므로 횟수도 0 부터 다시 셉니다.
+	 */
+	@ColumnDefault("0")
+	@Column(name = "failed_attempts", nullable = false)
+	private int failedAttempts;
+
+	/** 새 인증 기록을 만듭니다. 사용 전(false)·틀린 횟수 0 으로 시작합니다. */
 	public static EmailVerification create(
 			String email,
 			String code,
@@ -79,12 +94,23 @@ public class EmailVerification extends BaseEntity {
 		verification.type = type;
 		verification.expiresAt = expiresAt;
 		verification.used = false;
+		verification.failedAttempts = 0;
 		return verification;
 	}
 
 	/** 인증 완료 표시. */
 	public void markUsed() {
 		this.used = true;
+	}
+
+	/** 인증코드를 한 번 틀렸다고 기록합니다. */
+	public void recordFailedAttempt() {
+		this.failedAttempts++;
+	}
+
+	/** 틀린 횟수가 한도에 닿아 더 이상 쓸 수 없는지. */
+	public boolean isAttemptsExceeded() {
+		return failedAttempts >= MAX_FAILED_ATTEMPTS;
 	}
 
 	/** {@code now} 시점에 만료됐는지. */

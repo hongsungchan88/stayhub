@@ -100,6 +100,32 @@ class SignupServiceTest {
 	}
 
 	@Test
+	@DisplayName("인증코드를 5번 틀리면 그 코드는 맞는 코드로도 쓸 수 없고, 재전송하면 다시 쓸 수 있다")
+	void fiveWrongAttemptsInvalidateCode() {
+		signupService.sendEmailCode(new EmailCodeSendRequest(EMAIL));
+		String code = latestCode();
+		String wrongCode = code.equals("000000") ? "111111" : "000000";
+
+		for (int i = 1; i < EmailVerification.MAX_FAILED_ATTEMPTS; i++) { // 1~4번째
+			assertThatThrownBy(() -> signupService.verifyEmailCode(new EmailCodeVerifyRequest(EMAIL, wrongCode)))
+					.isInstanceOf(BusinessException.class)
+					.hasMessage("인증코드가 일치하지 않습니다.");
+		}
+		// 5번째로 틀리면 재요청 안내
+		assertThatThrownBy(() -> signupService.verifyEmailCode(new EmailCodeVerifyRequest(EMAIL, wrongCode)))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("인증코드를 5번 틀렸습니다. 인증코드를 다시 요청해 주세요.");
+		// 그 뒤에는 맞는 코드를 넣어도 막힘
+		assertThatThrownBy(() -> signupService.verifyEmailCode(new EmailCodeVerifyRequest(EMAIL, code)))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("인증코드를 5번 틀렸습니다. 인증코드를 다시 요청해 주세요.");
+
+		// 재전송하면 새 코드로 다시 인증할 수 있음
+		signupService.sendEmailCode(new EmailCodeSendRequest(EMAIL));
+		signupService.verifyEmailCode(new EmailCodeVerifyRequest(EMAIL, latestCode()));
+	}
+
+	@Test
 	@DisplayName("재전송하면 이전 코드는 쓸 수 없고 최신 코드만 통한다")
 	void resendInvalidatesOldCode() {
 		signupService.sendEmailCode(new EmailCodeSendRequest(EMAIL));
