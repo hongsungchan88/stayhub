@@ -27,6 +27,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
 	/** 로그인용 조회. 없거나 삭제된 계정이면 빈 Optional. */
 	Optional<User> findByLoginIdAndStatus(String loginId, EntityStatus status);
 
+	/** 이메일로 조회 (비밀번호 재설정, ACC-003). 없거나 삭제된 계정이면 빈 Optional. */
+	Optional<User> findByEmailAndStatus(String email, EntityStatus status);
+
 	/** 아이디 중복 확인. 삭제된 계정도 포함합니다. */
 	boolean existsByLoginId(String loginId);
 
