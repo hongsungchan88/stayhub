@@ -127,6 +127,49 @@ class HousekeepingTaskServiceTest {
 	}
 
 	@Test
+	@DisplayName("체크아웃 후 처리: 투숙 중 객실은 청소 필요가 되고, 담당자 없는 청소 작업이 배정됨으로 생긴다")
+	void checkoutCreatesCleaningTask() {
+		Long roomId = occupiedRoom();
+
+		HousekeepingTaskResponse task = housekeepingTaskService.createCheckoutCleaning(roomId, CHECKOUT_TIME, 7L);
+
+		assertThat(roomService.getDetail(roomId).status()).isEqualTo(RoomStatus.CLEANING_NEEDED);
+		assertThat(lastLog().getPreviousStatus()).isEqualTo(RoomStatus.OCCUPIED);
+		assertThat(lastLog().getNewStatus()).isEqualTo(RoomStatus.CLEANING_NEEDED);
+		assertThat(lastLog().getChangeReason()).isEqualTo("체크아웃");
+		assertThat(lastLog().getChangedBy()).isEqualTo(7L);
+
+		assertThat(task.roomId()).isEqualTo(roomId);
+		assertThat(task.taskType()).isEqualTo(HousekeepingTaskType.CLEANING);
+		assertThat(task.status()).isEqualTo(HousekeepingTaskStatus.SCHEDULED);
+		assertThat(task.checkoutTime()).isEqualTo(CHECKOUT_TIME);
+		assertThat(task.scheduledAt()).isEqualTo(CHECKOUT_TIME);
+		assertThat(task.assignedStaffId()).isNull();
+		assertThat(task.isReassigned()).isFalse();
+
+		// 만든 작업으로 바로 청소를 시작할 수 있다
+		changeTaskStatus(task.id(), HousekeepingTaskStatus.IN_PROGRESS);
+		assertThat(roomService.getDetail(roomId).status()).isEqualTo(RoomStatus.CLEANING);
+	}
+
+	@Test
+	@DisplayName("체크아웃 후 처리: 투숙 중이 아닌 객실이나 없는 객실이면 BusinessException이 나고 작업이 생기지 않는다")
+	void checkoutOfNotOccupiedRoomThrows() {
+		Long roomId = createRoom(); // VACANT
+
+		assertThatThrownBy(() -> housekeepingTaskService.createCheckoutCleaning(roomId, CHECKOUT_TIME, 7L))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("객실이 투숙 중 상태가 아니라 체크아웃 청소를 배정할 수 없습니다.");
+		assertThatThrownBy(() -> housekeepingTaskService.createCheckoutCleaning(99999L, CHECKOUT_TIME, 7L))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("객실을 찾을 수 없습니다.");
+
+		assertThat(roomService.getDetail(roomId).status()).isEqualTo(RoomStatus.VACANT);
+		assertThat(housekeepingTaskRepository.count()).isZero();
+		assertThat(roomStatusLogRepository.count()).isZero();
+	}
+
+	@Test
 	@DisplayName("청소 시작하면 작업은 진행 중, 객실은 청소중이 되고 이력이 남는다")
 	void startCleaningChangesRoom() {
 		Long roomId = roomNeedingCleaning();
@@ -252,6 +295,14 @@ class HousekeepingTaskServiceTest {
 		Long roomId = createRoom();
 		roomService.changeStatus(roomId, new RoomStatusChangeRequest(
 				RoomStatus.VACANT, RoomStatus.CLEANING_NEEDED, "체크아웃"), 1L);
+		return roomId;
+	}
+
+	/** 투숙 중(OCCUPIED) 객실을 만들고 ID를 돌려줍니다. */
+	private Long occupiedRoom() {
+		Long roomId = createRoom();
+		roomService.changeStatus(roomId, new RoomStatusChangeRequest(
+				RoomStatus.VACANT, RoomStatus.OCCUPIED, "체크인"), 1L);
 		return roomId;
 	}
 

@@ -13,6 +13,7 @@ import com.stayhub.room.entity.HousekeepingTaskType;
 import com.stayhub.room.entity.RoomStatus;
 import com.stayhub.room.repository.HousekeepingTaskRepository;
 import com.stayhub.room.repository.RoomRepository;
+import java.time.LocalDateTime;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -123,6 +124,40 @@ public class HousekeepingTaskService {
 		// 수정일시(updatedAt)를 응답에 담으려고 먼저 반영합니다. (update 와 같은 이유)
 		housekeepingTaskRepository.flush();
 		return HousekeepingTaskResponse.from(housekeepingTask);
+	}
+
+	/**
+	 * 체크아웃 후 처리 (ROM-003, RSV-004). 객실을 투숙 중(OCCUPIED) → 청소 필요(CLEANING_NEEDED)로 바꾸고,
+	 * 그 객실의 청소 작업을 배정됨(SCHEDULED) 상태로 하나 만듭니다.
+	 *
+	 * <p>{@code ReservationService.changeStatus}의 CHECKED_OUT 처리에서, 미정산 확인
+	 * ({@code AdditionalChargeService.checkAllSettled})을 통과한 뒤 부릅니다.
+	 * 객실 상태 변경과 작업 등록은 부른 쪽 트랜잭션에 함께 묶이므로 셋 중 하나라도 실패하면 모두 되돌려집니다.
+	 *
+	 * <p>작업의 체크아웃 시각과 배정 일시는 둘 다 {@code checkoutTime}으로 넣습니다.
+	 * 담당 스태프는 비워 둡니다(assigned_staff_id NULL). 스태프 근무 현황을 읽을 방법이 아직 없어서,
+	 * 청소 스케줄 화면에서 [재배정]으로 정합니다. 스태프 자동 배정은 직원 목록 API가 생긴 뒤 이 메서드에 더합니다.
+	 *
+	 * @param roomId       체크아웃한 예약의 객실 ID
+	 * @param checkoutTime 체크아웃 완료 시각
+	 * @param changedBy    처리한 담당자 ID. 객실 상태 변경 이력(room_status_logs)에 남습니다.
+	 */
+	@Transactional
+	public HousekeepingTaskResponse createCheckoutCleaning(Long roomId, LocalDateTime checkoutTime, Long changedBy) {
+		checkRoomExists(roomId);
+		checkRoomStatus(roomId, RoomStatus.OCCUPIED, "객실이 투숙 중 상태가 아니라 체크아웃 청소를 배정할 수 없습니다.");
+		roomService.changeStatus(roomId, new RoomStatusChangeRequest(
+				RoomStatus.OCCUPIED, RoomStatus.CLEANING_NEEDED, "체크아웃"), changedBy);
+
+		HousekeepingTask housekeepingTask = HousekeepingTask.create(
+				roomId,
+				HousekeepingTaskType.CLEANING,
+				checkoutTime,
+				null,
+				false,
+				checkoutTime
+		);
+		return HousekeepingTaskResponse.from(housekeepingTaskRepository.save(housekeepingTask));
 	}
 
 	/**

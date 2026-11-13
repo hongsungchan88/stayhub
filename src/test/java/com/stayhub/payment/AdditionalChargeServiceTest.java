@@ -162,6 +162,32 @@ class AdditionalChargeServiceTest {
 		assertThat(additionalChargeService.create(mergeRequest(1L, true, completedId)).paymentId()).isEqualTo(completedId);
 	}
 
+	@Test
+	@DisplayName("미정산 추가 요금이 있으면 체크아웃 전 확인에서 BusinessException이 나고, 모두 정산되면 통과한다")
+	void checkoutBlockedWhileUnsettled() {
+		AdditionalChargeResponse created = additionalChargeService.create(createRequest(AdditionalChargeType.MINIBAR));
+
+		assertThat(additionalChargeService.hasUnsettledCharges(1L)).isTrue();
+		assertThatThrownBy(() -> additionalChargeService.checkAllSettled(1L))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("정산되지 않은 추가 요금이 있어 체크아웃할 수 없습니다. 추가 요금을 먼저 정산해 주세요.");
+
+		additionalChargeService.update(created.id(), new AdditionalChargeUpdateRequest(
+				1L, AdditionalChargeType.MINIBAR, "생수 2병", new BigDecimal("4000.00"), false, null, true));
+
+		assertThat(additionalChargeService.hasUnsettledCharges(1L)).isFalse();
+		additionalChargeService.checkAllSettled(1L);
+	}
+
+	@Test
+	@DisplayName("다른 예약의 미정산 추가 요금이나 추가 요금이 없는 예약은 체크아웃을 막지 않는다")
+	void otherReservationDoesNotBlockCheckout() {
+		additionalChargeService.create(createRequest(AdditionalChargeType.MINIBAR)); // 예약 1, 미정산
+
+		assertThat(additionalChargeService.hasUnsettledCharges(2L)).isFalse();
+		additionalChargeService.checkAllSettled(2L);
+	}
+
 	/** 테스트용 결제를 등록하고 ID 를 돌려줍니다. */
 	private Long createPayment(Long reservationId) {
 		Long channelId = ChannelFixture.save(channelRepository, "10.00", true).getId();
