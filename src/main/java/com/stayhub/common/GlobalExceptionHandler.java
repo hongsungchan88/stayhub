@@ -27,6 +27,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
  * <ul>
  *   <li>400 — 요청이 잘못됨 (업무 규칙 위반, 검증 실패, 값 형식 오류, JSON 오류, 필수 파라미터 누락)</li>
  *   <li>401 — 로그인하지 않고 {@code /api/**} 를 호출함 (로그인·회원가입 API 제외)</li>
+ *   <li>403 — 로그인은 했지만 권한이 없음 (예: 호스트가 아닌 직원이 직원 계정 관리 API 호출)</li>
  *   <li>404 — 없는 주소 (favicon.ico 등). ERROR 로그를 남기지 않습니다</li>
  *   <li>405 — 주소는 맞는데 그 주소가 받지 않는 요청 방식 (예: DELETE API 가 없는 테이블에 DELETE)</li>
  *   <li>409 — 두 사람이 거의 동시에 같은 데이터를 바꿔 나중 요청이 실패함 ({@code @Version} 충돌)</li>
@@ -48,6 +49,23 @@ public class GlobalExceptionHandler {
 		log.warn("업무 예외: {}", e.getMessage());
 		return ResponseEntity
 				.status(HttpStatus.BAD_REQUEST)
+				.body(ApiResponse.error(e.getMessage()));
+	}
+
+	/**
+	 * 로그인은 했지만 권한이 없는 요청. 403.
+	 *
+	 * <p>이런 요청일 때 납니다.</p>
+	 * <ul>
+	 *     <li>호스트가 아닌 직원이 직원 계정 관리 API({@code /api/users/**})호출 (ACC-005)</li>
+	 * </ul>
+	 * 응답은 "권한이 없습니다."
+	 */
+	@ExceptionHandler(ForbiddenException.class)
+	public ResponseEntity<ApiResponse<Void>> handleForbidden(ForbiddenException e) {
+		log.debug("권한 없음: {}", e.getMessage());
+		return ResponseEntity
+				.status(HttpStatus.FORBIDDEN)
 				.body(ApiResponse.error(e.getMessage()));
 	}
 

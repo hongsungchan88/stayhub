@@ -162,6 +162,14 @@ public class User extends BaseEntity {
 	public boolean isLocked(LocalDateTime now) {
 		return lockoutUntil != null && now.isBefore(lockoutUntil);
 	}
+	/**
+	 * 직원 정보를 고칩니다. (직원 계정 관리, ACC-005 - 이름·역할만)
+	 * HOST 로 바꾸는 것, HOST·본인 계정을 고치는 것은 서비스에서 막습니다.
+	 */
+	public void update(String name, UserRole role) {
+		this.name = name;
+		this.role = role;
+	}
 
 	/** 소프트 삭제. 행은 그대로 두고 status 만 DELETED 로 바꿉니다. (ACC-005) */
 	public void delete() {
