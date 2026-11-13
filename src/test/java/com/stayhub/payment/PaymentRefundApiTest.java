@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.stayhub.account.entity.User;
 import com.stayhub.account.entity.UserRole;
 import com.stayhub.account.repository.UserRepository;
+import com.stayhub.channel.repository.ChannelRepository;
 import com.stayhub.common.PropertyScope;
 import com.stayhub.payment.dto.PaymentCreateRequest;
 import com.stayhub.payment.service.PaymentService;
@@ -53,6 +54,9 @@ class PaymentRefundApiTest {
 	private RoomRepository roomRepository;
 
 	@Autowired
+	private ChannelRepository channelRepository;
+
+	@Autowired
 	private ReservationService reservationService;
 
 	@Autowired
@@ -72,13 +76,14 @@ class PaymentRefundApiTest {
 				.andExpect(status().isOk())
 				.andReturn().getRequest().getSession(false);
 
+		Long channelId = ChannelFixture.save(channelRepository, "10.00", true).getId();
 		Long roomId = roomRepository.save(Room.create(
 				PropertyScope.DEFAULT_PROPERTY_ID, "REFUNDAPI-101", "STANDARD", new BigDecimal("100000.00"), 2)).getId();
 		LocalDate checkIn = LocalDate.now().plusDays(10);
 		Long reservationId = reservationService.create(
 				null, "환불테스트", "010-0000-0000", roomId, null, checkIn, checkIn.plusDays(1), null).getId();
 		paymentId = paymentService.create(new PaymentCreateRequest(
-				reservationId, 1L, "사전 결제", new BigDecimal("100000.00"), null, null, null)).id();
+				reservationId, channelId, "사전 결제", new BigDecimal("100000.00"), null)).id();
 	}
 
 	@Test

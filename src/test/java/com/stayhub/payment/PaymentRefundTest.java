@@ -3,6 +3,7 @@ package com.stayhub.payment;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.stayhub.channel.repository.ChannelRepository;
 import com.stayhub.common.BusinessException;
 import com.stayhub.common.PropertyScope;
 import com.stayhub.payment.dto.PaymentCreateRequest;
@@ -44,10 +45,16 @@ class PaymentRefundTest {
 	@Autowired
 	private RoomRepository roomRepository;
 
+	@Autowired
+	private ChannelRepository channelRepository;
+
 	private Long roomId;
+	private Long channelId;
 
 	@BeforeEach
 	void setUp() {
+		// PAY-003: 결제 등록 때 채널 수수료율을 읽으므로 실제 채널이 있어야 합니다.
+		channelId = ChannelFixture.save(channelRepository, "10.00", true).getId();
 		roomId = roomRepository.save(Room.create(
 				PropertyScope.DEFAULT_PROPERTY_ID, "REFUNDTEST-101", "STANDARD", new BigDecimal("100000.00"), 2)).getId();
 	}
@@ -143,7 +150,7 @@ class PaymentRefundTest {
 	@DisplayName("결제의 예약이 없으면 환불 처리를 반려한다")
 	void refundWithoutReservationRejected() {
 		Long paymentId = paymentService.create(new PaymentCreateRequest(
-				-1L, 1L, "사전 결제", new BigDecimal("100000.00"), null, null, null)).id();
+				-1L, channelId, "사전 결제", new BigDecimal("100000.00"), null)).id();
 		paymentService.requestRefund(paymentId);
 
 		assertThatThrownBy(() -> paymentService.refund(paymentId))
@@ -156,6 +163,6 @@ class PaymentRefundTest {
 		Long reservationId = reservationService.create(
 				null, "환불테스트", "010-0000-0000", roomId, null, checkIn, checkIn.plusDays(1), null).getId();
 		return paymentService.create(new PaymentCreateRequest(
-				reservationId, 1L, "사전 결제", new BigDecimal("100000.00"), null, null, null)).id();
+				reservationId, channelId, "사전 결제", new BigDecimal("100000.00"), null)).id();
 	}
 }

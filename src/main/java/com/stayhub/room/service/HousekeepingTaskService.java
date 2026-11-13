@@ -12,6 +12,7 @@ import com.stayhub.room.entity.HousekeepingTaskStatus;
 import com.stayhub.room.entity.HousekeepingTaskType;
 import com.stayhub.room.entity.RoomStatus;
 import com.stayhub.room.repository.HousekeepingTaskRepository;
+import com.stayhub.room.repository.RoomRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -36,10 +37,16 @@ public class HousekeepingTaskService {
 	);
 
 	private final HousekeepingTaskRepository housekeepingTaskRepository;
+	private final RoomRepository roomRepository;
 	private final RoomService roomService;
 
-	public HousekeepingTaskService(HousekeepingTaskRepository housekeepingTaskRepository, RoomService roomService) {
+	public HousekeepingTaskService(
+			HousekeepingTaskRepository housekeepingTaskRepository,
+			RoomRepository roomRepository,
+			RoomService roomService
+	) {
 		this.housekeepingTaskRepository = housekeepingTaskRepository;
+		this.roomRepository = roomRepository;
 		this.roomService = roomService;
 	}
 
@@ -58,9 +65,10 @@ public class HousekeepingTaskService {
 		return HousekeepingTaskResponse.from(findOrThrow(id));
 	}
 
-	/** 등록. */
+	/** 등록. 없는 객실이면 BusinessException. */
 	@Transactional
 	public HousekeepingTaskResponse create(HousekeepingTaskCreateRequest request) {
+		checkRoomExists(request.roomId());
 		HousekeepingTask housekeepingTask = HousekeepingTask.create(
 				request.roomId(),
 				request.taskType(),
@@ -72,10 +80,11 @@ public class HousekeepingTaskService {
 		return HousekeepingTaskResponse.from(housekeepingTaskRepository.save(housekeepingTask));
 	}
 
-	/** 수정. 없는 항목이면 BusinessException. */
+	/** 수정. 없는 항목이거나 없는 객실이면 BusinessException. */
 	@Transactional
 	public HousekeepingTaskResponse update(Long id, HousekeepingTaskUpdateRequest request) {
 		HousekeepingTask housekeepingTask = findOrThrow(id);
+		checkRoomExists(request.roomId());
 		housekeepingTask.update(
 				request.roomId(),
 				request.taskType(),
@@ -114,6 +123,16 @@ public class HousekeepingTaskService {
 		// 수정일시(updatedAt)를 응답에 담으려고 먼저 반영합니다. (update 와 같은 이유)
 		housekeepingTaskRepository.flush();
 		return HousekeepingTaskResponse.from(housekeepingTask);
+	}
+
+	/**
+	 * 작업 대상 객실이 있는지 확인합니다 (정책 42행 — DB FK 대신 서비스에서 참조 대상 확인).
+	 * 없으면 상태 변경 때 객실을 못 찾아 실패하므로, 등록·수정 단계에서 먼저 막습니다.
+	 */
+	private void checkRoomExists(Long roomId) {
+		if (!roomRepository.existsById(roomId)) {
+			throw new BusinessException("객실을 찾을 수 없습니다.");
+		}
 	}
 
 	/** 한 단계 앞으로 가는 변경만 통과시킵니다. */

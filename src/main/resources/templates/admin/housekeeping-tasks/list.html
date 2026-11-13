@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<!--/*
+  청소 스케줄 SCR-ROM-05 (/admin/housekeeping-tasks) + 작업 등록·재배정 팝업 + 작업 시작·완료 확인 팝업.
+  가이드북 목록(guidebooks/list.html)·편집 폼(form.html)과 객실 현황 보드(rooms/list.html)를 따라 만들었습니다.
+
+  이 화면이 하는 일
+    GET /api/housekeeping-tasks?page= 로 20건씩 불러와 표로 그립니다. 응답에는 객실 ID 만 있어서,
+    객실 목록(GET /api/rooms)을 한 번 불러 객실 번호로 바꿔 보여 줍니다(팝업의 객실 선택에도 씁니다).
+    [작업 등록] → 팝업 → POST /api/housekeeping-tasks. 자동 배정(ROM-003)이 아직 없어서 담당자가 직접 배정합니다.
+    [재배정]   → 같은 팝업에 지금 값을 채워 → PUT /api/housekeeping-tasks/{id} (재배정 여부 체크)
+    [작업 시작]·[작업 완료] → 확인 팝업 → PUT /api/housekeeping-tasks/{id}/status
+      청소 작업이면 서버가 객실 상태도 함께 바꿉니다(청소필요 → 청소중 → 빈방). 객실 상태가 맞지 않으면 반려 문구가 팝업 위에 뜹니다.
+
+  가이드북과 다른 점
+    - 삭제 버튼 없음 — 청소 작업은 삭제 기능이 없는 테이블
+    - 검색 조건 없음 — 작업 목록 API 에 필터가 없음
+    - 담당 스태프는 ID 로 입력·표시 — 스태프 이름을 돌려주는 API 가 아직 없음
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{admin/layout :: layout('청소 스케줄', ~{::section})}">
+<body>
+<section class="content">
+    <div class="container-fluid">
+        <div class="card">
+            <div class="card-header d-flex align-items-center flex-wrap">
+                <div id="legend"></div>
+                <button type="button" class="btn btn-primary btn-sm ml-auto" onclick="openTaskModal()">작업 등록</button>
+            </div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                    <tr>
+                        <th style="width: 150px">배정 일시</th>
+                        <th style="width: 90px">객실</th>
+                        <th style="width: 80px">작업</th>
+                        <th style="width: 110px">담당 스태프</th>
+                        <th style="width: 150px">체크아웃</th>
+                        <th style="width: 110px">상태</th>
+                        <th style="width: 150px">완료 일시</th>
+                        <th>관리</th>
+                    </tr>
+                    </thead>
+                    <tbody id="rows"></tbody>
+                </table>
+            </div>
+            <div class="card-footer" id="pagination"></div>
+        </div>
+    </div>
+
+    <!--/* 작업 등록·재배정 팝업. name = HousekeepingTaskCreateRequest / UpdateRequest 필드명 */-->
+    <div class="modal fade" id="taskModal" tabindex="-1" role="dialog" aria-labelledby="taskModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <form id="taskForm" novalidate>
+                    <div class="modal-header">
+                        <h2 class="modal-title h5" id="taskModalTitle">작업 등록</h2>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none" data-form-error></div>
+                        <div class="form-group">
+                            <label for="roomId" class="required">객실</label>
+                            <select id="roomId" name="roomId" class="form-control"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="taskType">작업 유형</label>
+                            <select id="taskType" name="taskType" class="form-control">
+                                <option value="CLEANING">청소</option>
+                                <option value="INSPECTION">점검</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="checkoutTime" class="required">체크아웃 완료 시각</label>
+                            <input type="datetime-local" id="checkoutTime" name="checkoutTime" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="scheduledAt" class="required">작업 배정 일시</label>
+                            <input type="datetime-local" id="scheduledAt" name="scheduledAt" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="assignedStaffId">담당 스태프 ID</label>
+                            <input type="number" id="assignedStaffId" name="assignedStaffId" class="form-control w-auto" min="1">
+                            <small class="form-text text-muted">비우면 미배정</small>
+                        </div>
+                        <div class="form-check" id="reassignedGroup">
+                            <input type="checkbox" id="isReassigned" name="isReassigned" class="form-check-input">
+                            <label for="isReassigned" class="form-check-label">재배정</label>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">취소</button>
+                        <button type="submit" class="btn btn-primary">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!--/* 작업 시작·완료 확인 팝업 */-->
+    <div class="modal fade" id="statusModal" tabindex="-1" role="dialog" aria-labelledby="statusModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <form id="statusForm" novalidate>
+                    <div class="modal-header">
+                        <h2 class="modal-title h5" id="statusModalTitle"></h2>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none" data-form-error></div>
+                        <p class="mb-0" id="statusMessage"></p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">취소</button>
+                        <button type="submit" class="btn btn-primary" id="statusSubmit">확인</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+      const API_URL = '/api/housekeeping-tasks';
+      const ROOMS_URL = '/api/rooms';
+      const STATUS = {
+        SCHEDULED: { label: '배정됨', color: 'secondary' },
+        IN_PROGRESS: { label: '진행 중', color: 'warning' },
+        COMPLETED: { label: '완료', color: 'success' },
+      };
+      const TYPE_LABELS = { CLEANING: '청소', INSPECTION: '점검' };
+      // 상태별 다음 단계. 서버도 이 순서만 허용합니다(SCHEDULED → IN_PROGRESS → COMPLETED)
+      const NEXT = {
+        SCHEDULED: { status: 'IN_PROGRESS', button: '작업 시작',
+          message: t => t.taskType === 'CLEANING' ? '청소를 시작합니다. 객실 상태가 청소필요 → 청소중으로 바뀝니다.' : '점검을 시작합니다.' },
+        IN_PROGRESS: { status: 'COMPLETED', button: '작업 완료',
+          message: t => t.taskType === 'CLEANING' ? '청소를 완료합니다. 객실 상태가 청소중 → 빈방으로 바뀝니다.' : '점검을 완료합니다.' },
+      };
+
+      const taskForm = document.getElementById('taskForm');
+      const statusForm = document.getElementById('statusForm');
+      let currentPage = 0;
+      let tasksById = {}; // 지금 페이지의 작업. 버튼에는 id 만 넣고 나머지는 여기서 꺼냅니다
+      let roomNumbers = {}; // 객실 ID → 객실 번호
+      let editingId = null; // 재배정 중인 작업. 등록이면 null
+      let statusTarget = null; // 시작·완료 팝업이 열려 있는 작업
+
+      function badge(status) {
+        const s = STATUS[status];
+        return s ? `<span class="badge badge-${s.color}">${s.label}</span>` : esc(status);
+      }
+
+      document.getElementById('legend').innerHTML = Object.keys(STATUS)
+        .map(key => `<span class="mr-3">${badge(key)}</span>`).join('');
+
+      // 객실 목록을 끝 페이지까지 불러 번호표와 팝업의 객실 선택을 만듭니다
+      async function loadRooms() {
+        const rooms = [];
+        for (let page = 0; ; page++) {
+          const result = await api('GET', `${ROOMS_URL}?page=${page}`);
+          rooms.push(...result.content);
+          if (page + 1 >= result.totalPages) break;
+        }
+        roomNumbers = Object.fromEntries(rooms.map(room => [room.id, room.roomNumber]));
+        document.getElementById('roomId').innerHTML = '<option value="">선택해 주세요</option>' +
+          rooms.map(room => `<option value="${room.id}">${esc(room.roomNumber)}</option>`).join('');
+      }
+
+      function roomLabel(roomId) {
+        return roomId in roomNumbers ? esc(roomNumbers[roomId]) : `#${roomId}`;
+      }
+
+      function buttons(t) {
+        const next = NEXT[t.status];
+        const start = next
+          ? `<button type="button" class="btn btn-outline-primary btn-xs" onclick="openStatusModal(${t.id})">${next.button}</button> `
+          : '';
+        const reassign = t.status !== 'COMPLETED'
+          ? `<button type="button" class="btn btn-outline-secondary btn-xs" onclick="openTaskModal(${t.id})">재배정</button>`
+          : '';
+        return start + reassign;
+      }
+
+      async function load(page) {
+        try {
+          const result = await api('GET', `${API_URL}?page=${page}`);
+          if (result.content.length === 0 && page > 0) return load(page - 1);
+          currentPage = page;
+          tasksById = Object.fromEntries(result.content.map(t => [t.id, t]));
+          renderRows(document.getElementById('rows'), result.content, t => `
+            <tr>
+              <td>${formatDateTime(t.scheduledAt)}</td>
+              <td>${roomLabel(t.roomId)}</td>
+              <td>${TYPE_LABELS[t.taskType] ?? esc(t.taskType)}</td>
+              <td>${t.assignedStaffId ? `#${t.assignedStaffId}` : '<span class="text-muted">미배정</span>'}</td>
+              <td>${formatDateTime(t.checkoutTime)}</td>
+              <td>${badge(t.status)}${t.isReassigned ? ' <span class="badge badge-light">재배정</span>' : ''}</td>
+              <td>${t.completedAt ? formatDateTime(t.completedAt) : '-'}</td>
+              <td>${buttons(t)}</td>
+            </tr>`);
+          renderPagination(document.getElementById('pagination'), result, load);
+        } catch (error) {
+          showError(error);
+        }
+      }
+
+      // datetime-local 칸은 "2026-11-12T10:00" 모양만 받아서 초 이하를 잘라 넣습니다
+      function toInputDateTime(value) {
+        return value ? String(value).slice(0, 16) : '';
+      }
+
+      // id 가 없으면 등록, 있으면 재배정(지금 값을 채우고 재배정 체크)
+      function openTaskModal(id) {
+        editingId = id ?? null;
+        clearFormError(taskForm);
+        taskForm.reset();
+        document.getElementById('taskModalTitle').textContent = id ? '작업 재배정' : '작업 등록';
+        document.getElementById('reassignedGroup').classList.toggle('d-none', !id);
+        if (id) {
+          const t = tasksById[id];
+          fillForm(taskForm, {
+            ...t,
+            checkoutTime: toInputDateTime(t.checkoutTime),
+            scheduledAt: toInputDateTime(t.scheduledAt),
+            isReassigned: true,
+          });
+        }
+        $('#taskModal').modal('show');
+      }
+
+      taskForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        clearFormError(taskForm);
+        const body = formToJson(taskForm);
+        if (!editingId) body.isReassigned = null; // 등록은 재배정 아님(서버 기본값 false)
+        try {
+          if (editingId) await api('PUT', `${API_URL}/${editingId}`, body);
+          else await api('POST', API_URL, body);
+          $('#taskModal').modal('hide');
+          toast('저장되었습니다.');
+          load(editingId ? currentPage : 0);
+        } catch (error) {
+          showFormError(taskForm, error);
+        }
+      });
+
+      function openStatusModal(id) {
+        const t = tasksById[id];
+        const next = NEXT[t.status];
+        statusTarget = { id, next };
+        clearFormError(statusForm);
+        document.getElementById('statusModalTitle').textContent = `${roomLabelText(t.roomId)} ${next.button}`;
+        document.getElementById('statusMessage').textContent = next.message(t);
+        document.getElementById('statusSubmit').textContent = next.button;
+        $('#statusModal').modal('show');
+      }
+
+      function roomLabelText(roomId) {
+        return roomId in roomNumbers ? `${roomNumbers[roomId]}호` : `객실 #${roomId}`;
+      }
+
+      statusForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        clearFormError(statusForm);
+        const { id, next } = statusTarget;
+        try {
+          await api('PUT', `${API_URL}/${id}/status`, { newStatus: next.status });
+          $('#statusModal').modal('hide');
+          toast('저장되었습니다.');
+          load(currentPage);
+        } catch (error) {
+          showFormError(statusForm, error); // 객실 상태가 맞지 않으면 반려 문구가 팝업 위에
+          load(currentPage);
+        }
+      });
+
+      loadRooms().catch(showError).finally(() => load(0));
+    </script>
+</section>
+</body>
+</html>
