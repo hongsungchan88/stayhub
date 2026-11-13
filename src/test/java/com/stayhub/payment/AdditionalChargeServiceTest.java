@@ -3,6 +3,7 @@ package com.stayhub.payment;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.stayhub.channel.repository.ChannelRepository;
 import com.stayhub.common.BusinessException;
 import com.stayhub.common.PageResponse;
 import com.stayhub.payment.dto.AdditionalChargeCreateRequest;
@@ -46,6 +47,9 @@ class AdditionalChargeServiceTest {
 
 	@Autowired
 	private PaymentRepository paymentRepository;
+
+	@Autowired
+	private ChannelRepository channelRepository;
 
 	@BeforeEach
 	void setUp() {
@@ -160,8 +164,9 @@ class AdditionalChargeServiceTest {
 
 	/** 테스트용 결제를 등록하고 ID 를 돌려줍니다. */
 	private Long createPayment(Long reservationId) {
+		Long channelId = ChannelFixture.save(channelRepository, "10.00", true).getId();
 		return paymentService.create(new PaymentCreateRequest(
-				reservationId, 1L, "사전 결제", new BigDecimal("100000.00"), null, null, null)).id();
+				reservationId, channelId, "사전 결제", new BigDecimal("100000.00"), null)).id();
 	}
 
 	/** 합산 정보만 다른 테스트용 등록 요청. */

@@ -1,5 +1,7 @@
 package com.stayhub.payment.service;
 
+import com.stayhub.channel.entity.Channel;
+import com.stayhub.channel.repository.ChannelRepository;
 import com.stayhub.common.BusinessException;
 import com.stayhub.common.PageResponse;
 import com.stayhub.payment.dto.PaymentCreateRequest;
@@ -50,18 +52,27 @@ public class PaymentService {
 	 */
 	static final BigDecimal PARTIAL_REFUND_RATE = new BigDecimal("0.50");
 
+	/** 수수료율은 퍼센트 값입니다. 예) 10.00 = 10% */
+	private static final BigDecimal PERCENT = BigDecimal.valueOf(100);
+
+	/** 금액 컬럼이 DECIMAL(10,2) 라서 수수료도 소수 둘째 자리까지 남깁니다. */
+	private static final int AMOUNT_SCALE = 2;
+
 	private final PaymentRepository paymentRepository;
 	private final AdditionalChargeRepository additionalChargeRepository;
 	private final ReservationRepository reservationRepository;
+	private final ChannelRepository channelRepository;
 
 	public PaymentService(
 			PaymentRepository paymentRepository,
 			AdditionalChargeRepository additionalChargeRepository,
-			ReservationRepository reservationRepository
+			ReservationRepository reservationRepository,
+			ChannelRepository channelRepository
 	) {
 		this.paymentRepository = paymentRepository;
 		this.additionalChargeRepository = additionalChargeRepository;
 		this.reservationRepository = reservationRepository;
+		this.channelRepository = channelRepository;
 	}
 
 	/**
@@ -98,32 +109,36 @@ public class PaymentService {
 		);
 	}
 
-	/** 등록. */
+	/** 등록. 수수료·실매출은 채널 수수료율로 계산합니다. 없는 채널이면 BusinessException. */
 	@Transactional
 	public PaymentResponse create(PaymentCreateRequest request) {
+		BigDecimal commissionAmount = calculateCommission(request.channelId(), request.paymentAmount());
+
 		Payment payment = Payment.create(
 				request.reservationId(),
 				request.channelId(),
 				request.paymentMethod(),
 				request.paymentAmount(),
-				request.commissionAmount(),
-				request.netRevenue(),
+				commissionAmount,
+				request.paymentAmount().subtract(commissionAmount),
 				request.errorNote()
 		);
 		return PaymentResponse.from(paymentRepository.save(payment));
 	}
 
-	/** 수정. 없는 항목이면 BusinessException. */
+	/** 수정. 수수료·실매출은 바뀐 금액·채널로 다시 계산합니다. 없는 항목이거나 없는 채널이면 BusinessException. */
 	@Transactional
 	public PaymentResponse update(Long id, PaymentUpdateRequest request) {
 		Payment payment = findOrThrow(id);
+		BigDecimal commissionAmount = calculateCommission(request.channelId(), request.paymentAmount());
+
 		payment.update(
 				request.reservationId(),
 				request.channelId(),
 				request.paymentMethod(),
 				request.paymentAmount(),
-				request.commissionAmount(),
-				request.netRevenue(),
+				commissionAmount,
+				request.paymentAmount().subtract(commissionAmount),
 				request.errorNote()
 		);
 		// save() 를 부르지 않아도 트랜잭션이 끝날 때 바뀐 값이 자동으로 DB 에 반영됩니다. (변경 감지)
@@ -191,6 +206,17 @@ public class PaymentService {
 	/** 부분 환불액. 소수 셋째 자리에서 반올림(DECIMAL(10,2)). */
 	static BigDecimal partialAmount(BigDecimal paymentAmount) {
 		return paymentAmount.multiply(PARTIAL_REFUND_RATE).setScale(2, RoundingMode.HALF_UP);
+	}
+
+	/**
+	 * 채널 수수료를 계산합니다 (PAY-003). 등록 채널은 채널 수수료율, 미등록 채널은 기본 수수료율을 씁니다.
+	 * 합산된 추가 요금은 넣지 않고 결제 금액만으로 계산합니다.
+	 */
+	private BigDecimal calculateCommission(Long channelId, BigDecimal paymentAmount) {
+		Channel channel = channelRepository.findById(channelId)
+				.orElseThrow(() -> new BusinessException("예약 채널을 찾을 수 없습니다."));
+		BigDecimal rate = channel.isRegistered() ? channel.getCommissionRate() : channel.getDefaultCommissionRate();
+		return paymentAmount.multiply(rate).divide(PERCENT, AMOUNT_SCALE, RoundingMode.HALF_UP);
 	}
 
 	/** 항목 하나를 찾습니다. 없으면 예외. */
