@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{admin/layout :: layout('특별 요청사항', ~{::section})}">
+<body>
+<section class="content">
+    <div class="container-fluid">
+
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">요청 등록</h2>
+            </div>
+            <form id="createForm" novalidate>
+                <div class="card-body">
+                    <div class="alert alert-danger d-none"
+                         data-form-error></div>
+
+                    <div class="form-group">
+                        <label for="reservationId" class="required">
+                            예약 ID
+                        </label>
+                        <input type="number" id="reservationId"
+                               name="reservationId"
+                               class="form-control" min="1" step="1">
+                        <small class="form-text text-muted">
+                            요청을 연결할 예약의 ID 번호를 입력하세요.
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="requestContent" class="required">
+                            요청 내용
+                        </label>
+                        <textarea id="requestContent" name="requestContent"
+                                  class="form-control" rows="3"
+                                  placeholder="예: 베개를 하나 추가해 주세요."></textarea>
+                    </div>
+                </div>
+
+                <div class="card-footer text-right">
+                    <button type="submit" id="createButton"
+                            class="btn btn-primary">요청 등록</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">요청 목록</h2>
+            </div>
+
+            <div class="card-body">
+                <form id="searchForm">
+                    <div class="form-row align-items-end">
+                        <div class="form-group col-md-4">
+                            <label for="filterReservationId">예약 ID로 조회</label>
+                            <input type="number" id="filterReservationId"
+                                   name="reservationId"
+                                   class="form-control" min="1" step="1">
+                        </div>
+                        <div class="form-group col-md-8">
+                            <button type="submit"
+                                    class="btn btn-primary">조회</button>
+                            <button type="reset"
+                                    class="btn btn-outline-secondary">
+                                전체 보기
+                            </button>
+                            <span id="totalCount" class="text-muted ml-3"
+                                  aria-live="polite"></span>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card-body table-responsive p-0">
+                <table class="table table-hover mb-0">
+                    <thead>
+                    <tr>
+                        <th scope="col">요청 ID</th>
+                        <th scope="col">예약 ID</th>
+                        <th scope="col">요청 내용</th>
+                        <th scope="col">상태</th>
+                        <th scope="col">담당자 ID</th>
+                        <th scope="col">거절 사유</th>
+                        <th scope="col">접수 일시</th>
+                        <th scope="col">관리</th>
+                    </tr>
+                    </thead>
+                    <tbody id="rows">
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-5">
+                            요청 목록을 불러오는 중입니다.
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card-footer" id="pagination"></div>
+        </div>
+
+        <div class="card d-none" id="processingCard">
+            <div class="card-header">
+                <h2 class="card-title">
+                    요청 처리 — <span id="selectedRequestId"></span>
+                </h2>
+            </div>
+
+            <form id="processingForm" novalidate>
+                <div class="card-body">
+                    <div class="alert alert-danger d-none"
+                         data-form-error></div>
+
+                    <p id="selectedContent"></p>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label for="processingStatus" class="required">
+                                처리 상태
+                            </label>
+                            <select id="processingStatus" name="status"
+                                    class="form-control">
+                                <option value="RECEIVED">접수</option>
+                                <option value="IN_PROGRESS">진행 중</option>
+                                <option value="COMPLETED">완료</option>
+                                <option value="REJECTED">거절</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group col-md-6">
+                            <label for="assignedStaffId">담당자 ID</label>
+                            <input type="number" id="assignedStaffId"
+                                   name="assignedStaffId"
+                                   class="form-control" min="1" step="1">
+                            <small class="form-text text-muted">
+                                비워두면 담당자를 배정하지 않습니다.
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="rejectReason">거절 사유</label>
+                        <textarea id="rejectReason" name="rejectReason"
+                                  class="form-control" rows="2"
+                                  maxlength="255"></textarea>
+                        <small class="form-text text-muted">
+                            거절할 때는 사유를 입력하세요.
+                            다른 상태로 저장하면 거절 사유는 지워집니다.
+                        </small>
+                    </div>
+                </div>
+
+                <div class="card-footer text-right">
+                    <button type="button" id="closeButton"
+                            class="btn btn-secondary">닫기</button>
+                    <button type="submit" id="updateButton"
+                            class="btn btn-primary">처리 정보 저장</button>
+                </div>
+            </form>
+        </div>
+
+    </div>
+
+    <script>
+        const API_URL = '/api/special-requests';
+        const STATUS_LABELS = {
+            RECEIVED: '접수',
+            IN_PROGRESS: '진행 중',
+            COMPLETED: '완료',
+            REJECTED: '거절'
+        };
+
+        const createForm = document.getElementById('createForm');
+        const searchForm = document.getElementById('searchForm');
+        const processingForm = document.getElementById('processingForm');
+        const processingCard = document.getElementById('processingCard');
+        const createButton = document.getElementById('createButton');
+        const updateButton = document.getElementById('updateButton');
+
+        let reservationFilter = '';
+        let currentPage = 0;
+        let selectedId = null;
+        let requestSequence = 0;
+        let creating = false;
+        let updating = false;
+
+        async function load(page) {
+            const sequence = ++requestSequence;
+
+            try {
+                const params = new URLSearchParams({ page });
+
+                if (reservationFilter) {
+                    params.set('reservationId', reservationFilter);
+                }
+
+                const result = await api('GET', `${API_URL}?${params}`);
+
+                if (sequence !== requestSequence) return;
+
+                currentPage = page;
+
+                document.getElementById('totalCount').textContent =
+                    `총 ${result.totalElements}건`;
+
+                renderRows(
+                    document.getElementById('rows'),
+                    result.content,
+                    item => `
+                        <tr>
+                            <td>${esc(item.id)}</td>
+                            <td>${esc(item.reservationId)}</td>
+                            <td class="text-break">${esc(item.requestContent)}</td>
+                            <td>${esc(STATUS_LABELS[item.status] || item.status)}</td>
+                            <td>${esc(item.assignedStaffId ?? '미배정')}</td>
+                            <td class="text-break">${esc(item.rejectReason ?? '-')}</td>
+                            <td>${esc(formatDateTime(item.createdAt))}</td>
+                            <td>
+                                <button type="button"
+                                        class="btn btn-outline-primary btn-sm"
+                                        data-request-id="${esc(item.id)}">
+                                    처리
+                                </button>
+                            </td>
+                        </tr>
+                    `
+                );
+
+                renderPagination(
+                    document.getElementById('pagination'), result, load
+                );
+            } catch (error) {
+                if (sequence !== requestSequence) return;
+
+                document.getElementById('totalCount').textContent = '';
+                document.getElementById('pagination').innerHTML = '';
+                document.getElementById('rows').innerHTML =
+                    '<tr><td colspan="8" class="text-center py-5">' +
+                    '목록을 불러오지 못했습니다. 다시 조회해 주세요.' +
+                    '</td></tr>';
+
+                showError(error);
+            }
+        }
+
+        searchForm.addEventListener('submit', e => {
+            e.preventDefault();
+
+            if (!searchForm.reportValidity()) return;
+
+            reservationFilter =
+                searchForm.elements.reservationId.value.trim();
+
+            load(0);
+        });
+
+        searchForm.addEventListener('reset', () => {
+            reservationFilter = '';
+            load(0);
+        });
+
+        createForm.addEventListener('submit', async e => {
+            e.preventDefault();
+            if (creating) return;
+
+            clearFormError(createForm);
+            creating = true;
+            createButton.disabled = true;
+
+            try {
+                const body = formToJson(createForm);
+                await api('POST', API_URL, body);
+
+                createForm.reset();
+                toast('요청이 접수되었습니다.');
+                await load(0);
+            } catch (error) {
+                showFormError(createForm, error);
+            } finally {
+                creating = false;
+                createButton.disabled = false;
+            }
+        });
+
+        document.getElementById('rows').addEventListener('click', async e => {
+            const button = e.target.closest('[data-request-id]');
+            if (!button || updating) return;
+
+            button.disabled = true;
+
+            try {
+                const item = await api(
+                    'GET', `${API_URL}/${button.dataset.requestId}`
+                );
+
+                selectedId = item.id;
+                processingForm.reset();
+                clearFormError(processingForm);
+                fillForm(processingForm, item);
+
+                document.getElementById('selectedRequestId').textContent =
+                    item.id;
+                document.getElementById('selectedContent').textContent =
+                    item.requestContent;
+
+                processingCard.classList.remove('d-none');
+                processingCard.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                });
+            } catch (error) {
+                showError(error);
+            } finally {
+                button.disabled = false;
+            }
+        });
+
+        processingForm.addEventListener('submit', async e => {
+            e.preventDefault();
+            if (selectedId == null || updating) return;
+
+            clearFormError(processingForm);
+            updating = true;
+            updateButton.disabled = true;
+
+            try {
+                const body = formToJson(processingForm);
+
+                await api('PUT', `${API_URL}/${selectedId}`, body);
+
+                toast('처리 정보가 저장되었습니다.');
+                processingCard.classList.add('d-none');
+                selectedId = null;
+                await load(currentPage);
+            } catch (error) {
+                showFormError(processingForm, error);
+            } finally {
+                updating = false;
+                updateButton.disabled = false;
+            }
+        });
+
+        document.getElementById('closeButton').addEventListener('click', () => {
+            if (updating) return;
+
+            selectedId = null;
+            processingCard.classList.add('d-none');
+        });
+
+        load(0);
+    </script>
+</section>
+</body>
+</html>
