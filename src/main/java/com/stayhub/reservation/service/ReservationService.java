@@ -1,57 +1,64 @@
 package com.stayhub.reservation.service;
 
+import com.stayhub.channel.entity.Channel;
+import com.stayhub.channel.repository.ChannelRepository;
 import com.stayhub.common.BusinessException;
+import com.stayhub.common.PageResponse;
+import com.stayhub.reservation.dto.ReservationCreateRequest;
+import com.stayhub.reservation.dto.ReservationResponse;
 import com.stayhub.reservation.entity.Reservation;
 import com.stayhub.reservation.entity.ReservationStatus;
 import com.stayhub.reservation.repository.ReservationRepository;
+import com.stayhub.room.entity.Room;
 import com.stayhub.room.repository.RoomRepository;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.stayhub.reservation.dto.ReservationUpdateRequest;
 
 /**
- * 예약 생성(중복 방지)과 상태 전이 — 총괄이 먼저 올리는 틀 (정책정의서 39·40행).
+ * 예약 생성·상태 변경·목록 조회·통합 검색.
  *
- * <p><b>이 파일이 하는 일</b>
- * <ul>
- *   <li>{@link #create} — 같은 객실에 날짜가 겹치는 예약을 막습니다. 동시에 들어온 두 요청도 하나만 성공합니다</li>
- *   <li>{@link #changeStatus} — {@link ReservationStatus#canChangeTo} 규칙대로만 상태를 바꿉니다</li>
- * </ul>
- *
- * <p><b>동시 예약을 막는 방법 (정책 40행 — 낙관적 락 한 가지)</b>
- * <br>겹침 검사만으로는 부족합니다. 두 요청이 거의 동시에 오면 둘 다 "겹치는 예약 없음" 을 보고 둘 다 저장할 수 있습니다.
- * 그래서 예약할 객실을 {@code RoomRepository.findForReservationById}({@code OPTIMISTIC_FORCE_INCREMENT})로 읽어,
- * 트랜잭션이 끝날 때 객실의 version 을 하나 올립니다. 같은 객실을 같은 version 으로 읽은 두 요청 중
- * 나중에 끝나는 쪽은 version 이 이미 바뀌어 {@code ObjectOptimisticLockingFailureException} 으로 롤백되고,
- * {@code GlobalExceptionHandler} 가 409 로 응답합니다. 비관적 락(SELECT ... FOR UPDATE)은 쓰지 않습니다.
- *
- * <p><b>담당자(B)에게</b>
- * <br>컨트롤러·요청/응답 DTO·목록·검색은 이 위에 만드세요. 예약을 만드는 코드는 어디서든 반드시 {@link #create} 를 거칩니다.
- * {@code reservationRepository.save(Reservation.create(...))} 를 직접 쓰면 중복 방지가 통째로 빠집니다.
+ * <p>총괄의 중복 예약 방지 틀을 사용합니다.
+ * 예약 생성은 반드시 이 서비스의 create를 거칩니다.
+ * 객실의 낙관적 락과 날짜 겹침 검사를 건너뛰어 직접 저장하지 않습니다.
  */
 @Service
 @Transactional(readOnly = true)
 public class ReservationService {
 
-	private static final DateTimeFormatter CODE_DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
+	private static final DateTimeFormatter CODE_DATE =
+			DateTimeFormatter.ofPattern("yyyyMMdd");
 
 	private final ReservationRepository reservationRepository;
 	private final RoomRepository roomRepository;
+	private final ChannelRepository channelRepository;
 
-	public ReservationService(ReservationRepository reservationRepository, RoomRepository roomRepository) {
+	public ReservationService(
+			ReservationRepository reservationRepository,
+			RoomRepository roomRepository,
+			ChannelRepository channelRepository
+	) {
 		this.reservationRepository = reservationRepository;
 		this.roomRepository = roomRepository;
+		this.channelRepository = channelRepository;
 	}
 
 	/**
-	 * 예약 생성 (RSV-001).
-	 *
-	 * @param userId    회원 예약이면 사용자 ID, 비회원이면 null
-	 * @param channelId 예약 채널 ID, 직접 예약이면 null
-	 * @param guestCount 비어 있으면 1
-	 * @throws BusinessException 날짜가 잘못됐거나, 객실이 없거나, 날짜가 겹칠 때
+	 * 예약 생성의 공통 진입점.
+	 * 회원 예약이면 userId를 전달하고, 비회원이면 null을 전달합니다.
 	 */
 	@Transactional
 	public Reservation create(
@@ -64,49 +71,280 @@ public class ReservationService {
 			LocalDate checkOutDate,
 			Integer guestCount
 	) {
-		if (!checkOutDate.isAfter(checkInDate)) {
-			throw new BusinessException("체크아웃 날짜는 체크인 날짜보다 뒤여야 합니다.");
+		if (checkInDate == null || checkOutDate == null
+				|| !checkOutDate.isAfter(checkInDate)) {
+			throw new BusinessException(
+					"체크아웃 날짜는 체크인 날짜보다 뒤여야 합니다.");
 		}
-		// 객실 version 을 이 트랜잭션 끝에 올리도록 표시합니다. 겹침 검사보다 먼저 해야 동시 요청을 잡습니다.
-		roomRepository.findForReservationById(roomId)
+
+		// 총괄의 동시 예약 차단: 겹침 검사 전에 객실의 낙관적 락을 잡습니다.
+		Room room = roomRepository.findForReservationById(roomId)
 				.orElseThrow(() -> new BusinessException("객실을 찾을 수 없습니다."));
 
-		if (reservationRepository.existsOverlap(roomId, checkInDate, checkOutDate, ReservationStatus.RELEASED)) {
+		if (reservationRepository.existsOverlap(
+				roomId, checkInDate, checkOutDate, ReservationStatus.RELEASED)) {
 			throw new BusinessException("선택한 날짜에 이미 예약된 객실입니다.");
 		}
-		// B: 인원(guest_count ≤ rooms.max_occupancy)·채널 존재 확인이 필요하면 여기에 추가
+
+		int count = guestCount == null ? 1 : guestCount;
+		if (count < 1 || count > room.getMaxOccupancy()) {
+			throw new BusinessException(
+					"guestCount: 투숙 인원은 1명 이상, 객실 최대 인원 "
+							+ room.getMaxOccupancy() + "명 이하여야 합니다.");
+		}
+
+		if (channelId != null && !channelRepository.existsById(channelId)) {
+			throw new BusinessException("channelId: 예약 채널을 찾을 수 없습니다.");
+		}
 
 		Reservation reservation = Reservation.create(
-				newReservationCode(checkInDate), userId, guestName, guestPhone,
-				roomId, channelId, checkInDate, checkOutDate, guestCount);
+				newReservationCode(checkInDate),
+				userId, guestName, guestPhone, roomId, channelId,
+				checkInDate, checkOutDate, guestCount
+		);
 		return reservationRepository.save(reservation);
 	}
 
 	/**
-	 * 상태 변경. 허용 규칙은 {@link ReservationStatus#canChangeTo}.
-	 *
-	 * @throws BusinessException 없는 예약이거나 허용되지 않는 변경일 때
+	 * 화면에서 받은 등록 요청을 처리합니다.
+	 * 이번 관리자 등록은 회원 연결 없이 비회원 예약으로 생성합니다.
+	 * 위의 공통 create를 호출하므로 중복 예약 검사를 그대로 거칩니다.
 	 */
+	@Transactional
+	public ReservationResponse create(ReservationCreateRequest request) {
+		Reservation reservation = create(
+				null,
+				request.guestName(),
+				request.guestPhone(),
+				request.roomId(),
+				request.channelId(),
+				request.checkInDate(),
+				request.checkOutDate(),
+				request.guestCount()
+		);
+
+		String roomNumber = roomRepository.findById(reservation.getRoomId())
+				.orElseThrow().getRoomNumber();
+
+		String channelName = reservation.getChannelId() == null
+				? "직접 예약"
+				: channelRepository.findById(reservation.getChannelId())
+				.orElseThrow().getChannelName();
+
+		return ReservationResponse.from(reservation, roomNumber, channelName);
+	}
+
+	/** 예약 상세 조회. 취소·노쇼 예약도 조회할 수 있습니다. */
+	public ReservationResponse getDetail(Long id) {
+		Reservation reservation = reservationRepository.findById(id)
+				.orElseThrow(() ->
+						new BusinessException("예약을 찾을 수 없습니다."));
+
+		String roomNumber = roomRepository.findById(reservation.getRoomId())
+				.map(Room::getRoomNumber)
+				.orElse("객실 #" + reservation.getRoomId());
+
+		String channelName = reservation.getChannelId() == null
+				? "직접 예약"
+				: channelRepository.findById(reservation.getChannelId())
+				.map(Channel::getChannelName)
+				.orElse("채널 #" + reservation.getChannelId());
+
+		return ReservationResponse.from(
+				reservation, roomNumber, channelName);
+	}
+
+	/**
+	 * 예약 날짜·객실 변경.
+	 * 기존 예약을 제외한 중복 검사와 객실의 낙관적 락을 사용합니다.
+	 */
+	@Transactional
+	public ReservationResponse update(
+			Long id, ReservationUpdateRequest request
+	) {
+		Reservation reservation = reservationRepository.findById(id)
+				.orElseThrow(() ->
+						new BusinessException("예약을 찾을 수 없습니다."));
+
+		if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
+			throw new BusinessException(
+					"예약 확정 상태에서만 날짜와 객실을 변경할 수 있습니다.");
+		}
+
+		if (request.checkInDate() == null
+				|| request.checkOutDate() == null
+				|| !request.checkOutDate().isAfter(request.checkInDate())) {
+			throw new BusinessException(
+					"checkOutDate: 체크아웃 날짜는 체크인 날짜보다 뒤여야 합니다.");
+		}
+
+		if (request.roomId() == null) {
+			throw new BusinessException("roomId: 객실을 선택해 주세요.");
+		}
+
+		// 새로 배정할 객실에 대한 동시 예약·변경을 차단합니다.
+		Room room = roomRepository.findForReservationById(request.roomId())
+				.orElseThrow(() ->
+						new BusinessException("roomId: 객실을 찾을 수 없습니다."));
+
+		// 인원은 그대로 유지하므로 변경할 객실에도 수용 가능한지 확인합니다.
+		if (reservation.getGuestCount() > room.getMaxOccupancy()) {
+			throw new BusinessException(
+					"roomId: 예약 인원이 선택한 객실의 최대 인원 "
+							+ room.getMaxOccupancy() + "명을 초과합니다.");
+		}
+
+		if (reservationRepository.existsOverlapExcludingReservation(
+				request.roomId(),
+				reservation.getId(),
+				request.checkInDate(),
+				request.checkOutDate(),
+				ReservationStatus.RELEASED
+		)) {
+			throw new BusinessException(
+					"선택한 날짜에 이미 예약된 객실입니다.");
+		}
+
+		reservation.changeSchedule(
+				request.roomId(),
+				request.checkInDate(),
+				request.checkOutDate()
+		);
+
+		// 수정일시를 반영한 뒤 응답 DTO를 만듭니다.
+		reservationRepository.flush();
+		return getDetail(reservation.getId());
+	}
+
+	/** 목록·통합 검색. 최신 예약부터 한 페이지에 20건씩 조회합니다. */
+	public PageResponse<ReservationResponse> getList(
+			String searchType, String keyword, int page
+	) {
+		if (page < 0) {
+			throw new BusinessException("페이지 번호는 0 이상이어야 합니다.");
+		}
+
+		if (searchType == null || !Set.of(
+				"guestName", "guestPhone", "reservationCode", "channelName"
+		).contains(searchType)) {
+			throw new BusinessException("검색 항목이 올바르지 않습니다.");
+		}
+
+		String term = keyword == null ? "" : keyword.trim();
+		if (term.length() > 100) {
+			throw new BusinessException("검색어는 100자 이내로 입력해 주세요.");
+		}
+
+		Pageable pageable = PageRequest.of(
+				page,
+				PageResponse.DEFAULT_PAGE_SIZE,
+				Sort.by(Sort.Direction.DESC, "id")
+		);
+
+		Page<Reservation> reservations;
+		if (term.isEmpty()) {
+			reservations = reservationRepository.findAll(pageable);
+		} else {
+			reservations = switch (searchType) {
+				case "guestName" ->
+						reservationRepository.findByGuestNameContainingIgnoreCase(
+								term, pageable);
+				case "guestPhone" ->
+						reservationRepository.findByGuestPhoneContainingIgnoreCase(
+								term, pageable);
+				case "reservationCode" ->
+						reservationRepository.findByReservationCodeContainingIgnoreCase(
+								term, pageable);
+				case "channelName" -> searchByChannelName(term, pageable);
+				default -> throw new BusinessException("검색 항목이 올바르지 않습니다.");
+			};
+		}
+
+		// 페이지에 있는 객실·채널의 ID를 모아 한 번씩 조회합니다.
+		List<Long> roomIds = reservations.getContent().stream()
+				.map(Reservation::getRoomId)
+				.distinct()
+				.toList();
+
+		List<Long> channelIds = reservations.getContent().stream()
+				.map(Reservation::getChannelId)
+				.filter(Objects::nonNull)
+				.distinct()
+				.toList();
+
+		Map<Long, String> rooms = roomRepository.findAllById(roomIds).stream()
+				.collect(Collectors.toMap(Room::getId, Room::getRoomNumber));
+
+		Map<Long, String> channels = channelRepository.findAllById(channelIds).stream()
+				.collect(Collectors.toMap(Channel::getId, Channel::getChannelName));
+
+		return PageResponse.from(reservations.map(reservation ->
+				ReservationResponse.from(
+						reservation,
+						rooms.getOrDefault(
+								reservation.getRoomId(),
+								"객실 #" + reservation.getRoomId()
+						),
+						reservation.getChannelId() == null
+								? "직접 예약"
+								: channels.getOrDefault(
+								reservation.getChannelId(),
+								"채널 #" + reservation.getChannelId()
+						)
+				)
+		));
+	}
+
+	/** 채널 이름에 맞는 ID를 찾아 예약을 검색합니다. */
+	private Page<Reservation> searchByChannelName(
+			String term, Pageable pageable
+	) {
+		String lowerTerm = term.toLowerCase(Locale.ROOT);
+
+		List<Long> ids = channelRepository.findAll().stream()
+				.filter(channel -> channel.getChannelName()
+						.toLowerCase(Locale.ROOT).contains(lowerTerm))
+				.map(Channel::getId)
+				.toList();
+
+		boolean direct = "직접 예약".contains(term);
+
+		if (direct && ids.isEmpty()) {
+			return reservationRepository.findByChannelIdIsNull(pageable);
+		}
+		if (direct) {
+			return reservationRepository.findByChannelIdInOrChannelIdIsNull(
+					ids, pageable);
+		}
+		if (ids.isEmpty()) {
+			return Page.empty(pageable);
+		}
+		return reservationRepository.findByChannelIdIn(ids, pageable);
+	}
+
+	/** 총괄의 상태 전이 규칙을 사용합니다. 업무별 추가 연동은 이후 구현합니다. */
 	@Transactional
 	public Reservation changeStatus(Long id, ReservationStatus newStatus) {
 		Reservation reservation = reservationRepository.findById(id)
 				.orElseThrow(() -> new BusinessException("예약을 찾을 수 없습니다."));
+
 		reservation.changeStatus(newStatus);
 
-		// B: 아래는 담당자가 채울 연동입니다. 상태 변경과 같은 트랜잭션에서 처리하세요.
-		//  - CANCELLED  : 취소 수수료·환불 금액 산출, 취소 불가 기간 거절, cancel_reason 저장 (RSV-002, PAY-001)
-		//  - NOSHOW     : 체크인 예정일 당일 미입실 자동 전환, 객실 재오픈 (RSV-003)
-		//  - CHECKED_IN : 키 번호 매핑, 객실 상태 → OCCUPIED (RSV-004, RoomService.changeStatus)
-		//  - CHECKED_OUT: 미정산 추가 요금이 있으면 차단, 객실 상태 → CLEANING_NEEDED (RSV-004, PAY-002)
+		// 이후 연결할 기능:
+		// CANCELLED: 취소 사유·취소 수수료·환불
+		// NOSHOW: 예정일 미입실 처리·객실 재오픈
+		// CHECKED_IN: 키 번호·객실 상태 변경
+		// CHECKED_OUT: 미정산 추가 요금 확인·객실 상태 변경
 		return reservation;
 	}
 
-	/**
-	 * 예약 번호. 예) R20261102-3F9A1C7E. UNIQUE 컬럼이라 혹시 겹치면 저장이 실패합니다.
-	 * 형식을 바꾸려면 이 메서드만 고치면 됩니다(B).
-	 */
+	/** 예: R20261116-3F9A1C7E */
 	private String newReservationCode(LocalDate checkInDate) {
-		String random = UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
+		String random = UUID.randomUUID().toString()
+				.replace("-", "")
+				.substring(0, 8)
+				.toUpperCase(Locale.ROOT);
+
 		return "R" + checkInDate.format(CODE_DATE) + "-" + random;
 	}
 }

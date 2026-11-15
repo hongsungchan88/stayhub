@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<!--/*
+  예약 등록 SCR-RSV-03 (/admin/reservations/new).
+  객실은 /api/rooms, 채널은 /api/channels에서 불러옵니다.
+  입력칸 name은 ReservationCreateRequest 필드명과 같습니다.
+  POST /api/reservations로 저장하고 성공하면 목록으로 이동합니다.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{admin/layout :: layout('예약 등록 / 변경', ~{::section})}">
+<body>
+<section class="content">
+    <div class="container-fluid">
+        <div class="alert alert-info d-none" id="roomNotice" role="status">
+            등록된 객실이 없습니다.
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">예약 정보</h2>
+            </div>
+            <form id="editForm" novalidate>
+                <div class="card-body">
+                    <div class="alert alert-danger d-none"
+                         data-form-error></div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label for="guestName" class="required">
+                                예약자 이름
+                            </label>
+                            <input type="text" id="guestName" name="guestName"
+                                   class="form-control" maxlength="50"
+                                   placeholder="예약자 이름을 입력하세요">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="guestPhone" class="required">
+                                연락처
+                            </label>
+                            <input type="tel" id="guestPhone" name="guestPhone"
+                                   class="form-control" maxlength="20"
+                                   placeholder="010-0000-0000">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label for="roomId" class="required">객실</label>
+                            <select id="roomId" name="roomId"
+                                    class="form-control" disabled>
+                                <option value="">불러오는 중입니다</option>
+                            </select>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="channelId">예약 채널</label>
+                            <select id="channelId" name="channelId"
+                                    class="form-control" disabled>
+                                <option value="">직접 예약</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label for="checkInDate" class="required">
+                                체크인 날짜
+                            </label>
+                            <input type="date" id="checkInDate"
+                                   name="checkInDate" class="form-control">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="checkOutDate" class="required">
+                                체크아웃 날짜
+                            </label>
+                            <input type="date" id="checkOutDate"
+                                   name="checkOutDate" class="form-control">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="guestCount" class="required">투숙 인원</label>
+                        <input type="number" id="guestCount" name="guestCount"
+                               class="form-control w-auto"
+                               min="1" step="1" value="1">
+                    </div>
+                </div>
+
+                <div class="card-footer text-right">
+                    <a th:href="@{/admin/reservations}"
+                       class="btn btn-secondary">목록으로</a>
+                    <button type="submit" class="btn btn-primary"
+                            id="saveButton" disabled>저장</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const LIST_URL = '/admin/reservations';
+        const reservationId = location.pathname
+            .match(/\/admin\/reservations\/(\d+)\/edit$/)?.[1];
+        const editing = Boolean(reservationId);
+
+        const form = document.getElementById('editForm');
+        const saveButton = document.getElementById('saveButton');
+
+        let rooms = [];
+        let ready = false;
+        let saving = false;
+
+        saveButton.textContent = editing ? '변경 저장' : '저장';
+
+        // 이번 변경 기능의 대상은 객실과 날짜입니다.
+        form.elements.guestName.readOnly = editing;
+        form.elements.guestPhone.readOnly = editing;
+        form.elements.guestCount.readOnly = editing;
+
+        async function loadForm() {
+            try {
+                const channels = await api('GET', '/api/channels');
+
+                form.elements.channelId.innerHTML =
+                    '<option value="">직접 예약</option>' +
+                    channels.map(channel => `
+          <option value="${esc(channel.id)}">
+            ${esc(channel.channelName)}
+          </option>
+        `).join('');
+
+                // 객실 목록은 마지막 페이지까지 가져옵니다.
+                let page = 0;
+                let result;
+                do {
+                    result = await api('GET', `/api/rooms?page=${page}`);
+                    rooms.push(...result.content);
+                    page++;
+                } while (page < result.totalPages);
+
+                form.elements.roomId.innerHTML =
+                    '<option value="">객실을 선택해 주세요</option>' +
+                    rooms.map(room => `
+          <option value="${esc(room.id)}">
+            ${esc(room.roomNumber)} (최대 ${esc(room.maxOccupancy)}명)
+          </option>
+        `).join('');
+
+                form.elements.roomId.disabled = false;
+                form.elements.channelId.disabled = editing;
+
+                if (editing) {
+                    const item = await api(
+                        'GET', `/api/reservations/${reservationId}`
+                    );
+
+                    fillForm(form, item);
+
+                    if (item.status !== 'CONFIRMED') {
+                        throw new Error(
+                            '예약 확정 상태에서만 날짜와 객실을 변경할 수 있습니다.'
+                        );
+                    }
+                }
+
+                ready = rooms.length > 0;
+                saveButton.disabled = !ready;
+
+                document.getElementById('roomNotice')
+                    .classList.toggle('d-none', rooms.length > 0);
+            } catch (error) {
+                ready = false;
+                saveButton.disabled = true;
+                showFormError(form, error);
+            }
+        }
+
+        form.addEventListener('submit', async e => {
+            e.preventDefault();
+            if (!ready || saving) return;
+
+            clearFormError(form);
+            saving = true;
+            saveButton.disabled = true;
+            let saved = false;
+
+            try {
+                const body = formToJson(form);
+                const roomId = body.roomId == null ? null : Number(body.roomId);
+
+                if (editing) {
+                    // 변경 요청에는 객실·날짜만 보냅니다.
+                    await api('PUT', `/api/reservations/${reservationId}`, {
+                        roomId,
+                        checkInDate: body.checkInDate,
+                        checkOutDate: body.checkOutDate
+                    });
+                } else {
+                    body.roomId = roomId;
+                    body.channelId =
+                        body.channelId == null ? null : Number(body.channelId);
+
+                    await api('POST', '/api/reservations', body);
+                }
+
+                saved = true;
+                toast(editing ? '예약이 변경되었습니다.' : '예약이 등록되었습니다.');
+
+                location.href = editing
+                    ? `/admin/reservations/${reservationId}`
+                    : LIST_URL;
+            } catch (error) {
+                showFormError(form, error);
+            } finally {
+                if (!saved) {
+                    saving = false;
+                    saveButton.disabled = false;
+                }
+            }
+        });
+
+        loadForm();
+    </script>
+</section>
+</body>
+</html>

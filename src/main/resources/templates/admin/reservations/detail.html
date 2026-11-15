@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<!--/*
+  예약 상세 SCR-RSV-02 (/admin/reservations/{id}).
+  주소에서 예약 ID를 읽고 GET /api/reservations/{id}로 조회합니다.
+  표시하는 값은 textContent로 넣어 HTML로 해석되지 않게 합니다.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{admin/layout :: layout('예약 상세', ~{::section})}">
+<body>
+<section class="content">
+    <div class="container-fluid">
+        <div class="alert alert-danger d-none" id="detailError"
+             role="alert"></div>
+
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">예약 정보</h2>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-0" id="loading">
+                    예약 정보를 불러오는 중입니다.
+                </p>
+
+                <dl class="row mb-0 d-none" id="details">
+                    <dt class="col-sm-3">예약번호</dt>
+                    <dd class="col-sm-9" id="reservationCode"></dd>
+
+                    <dt class="col-sm-3">예약 상태</dt>
+                    <dd class="col-sm-9" id="reservationStatus"></dd>
+
+                    <dt class="col-sm-3">예약자 이름</dt>
+                    <dd class="col-sm-9" id="guestName"></dd>
+
+                    <dt class="col-sm-3">연락처</dt>
+                    <dd class="col-sm-9" id="guestPhone"></dd>
+
+                    <dt class="col-sm-3">객실</dt>
+                    <dd class="col-sm-9" id="roomNumber"></dd>
+
+                    <dt class="col-sm-3">예약 채널</dt>
+                    <dd class="col-sm-9" id="channelName"></dd>
+
+                    <dt class="col-sm-3">체크인 날짜</dt>
+                    <dd class="col-sm-9" id="checkInDate"></dd>
+
+                    <dt class="col-sm-3">체크아웃 날짜</dt>
+                    <dd class="col-sm-9" id="checkOutDate"></dd>
+
+                    <dt class="col-sm-3">투숙 인원</dt>
+                    <dd class="col-sm-9" id="guestCount"></dd>
+
+                    <dt class="col-sm-3">등록 일시</dt>
+                    <dd class="col-sm-9" id="createdAt"></dd>
+
+                    <dt class="col-sm-3">수정 일시</dt>
+                    <dd class="col-sm-9" id="updatedAt"></dd>
+                </dl>
+            </div>
+            <div class="card-footer text-right">
+                <a th:href="@{/admin/reservations}"
+                   class="btn btn-secondary">목록으로</a>
+                <a id="editLink" class="btn btn-primary d-none">예약 변경</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const STATUS_LABELS = {
+            CONFIRMED: '예약 확정',
+            CANCELLED: '취소',
+            NOSHOW: '노쇼',
+            CHECKED_IN: '체크인 완료',
+            CHECKED_OUT: '체크아웃 완료'
+        };
+
+        async function loadDetail() {
+            try {
+                const reservationId = location.pathname
+                    .match(/\/admin\/reservations\/(\d+)$/)?.[1];
+
+                if (!reservationId) {
+                    throw new Error('예약 주소가 올바르지 않습니다.');
+                }
+
+                const item = await api(
+                    'GET', `/api/reservations/${reservationId}`
+                );
+
+                for (const field of [
+                    'reservationCode', 'guestName', 'guestPhone',
+                    'roomNumber', 'channelName'
+                ]) {
+                    document.getElementById(field).textContent = item[field] ?? '-';
+                }
+
+                document.getElementById('reservationStatus').textContent =
+                    STATUS_LABELS[item.status] || item.status;
+
+                document.getElementById('checkInDate').textContent =
+                    formatDate(item.checkInDate);
+                document.getElementById('checkOutDate').textContent =
+                    formatDate(item.checkOutDate);
+                document.getElementById('guestCount').textContent =
+                    `${item.guestCount}명`;
+                document.getElementById('createdAt').textContent =
+                    formatDateTime(item.createdAt);
+                document.getElementById('updatedAt').textContent =
+                    formatDateTime(item.updatedAt);
+
+                document.getElementById('details').classList.remove('d-none');
+                if (item.status === 'CONFIRMED') {
+                    const editLink = document.getElementById('editLink');
+                    editLink.href = `/admin/reservations/${reservationId}/edit`;
+                    editLink.classList.remove('d-none');
+                }
+            } catch (error) {
+                if (!error.shown) {
+                    const message = document.getElementById('detailError');
+                    message.textContent = error.message;
+                    message.classList.remove('d-none');
+                }
+            } finally {
+                document.getElementById('loading').classList.add('d-none');
+            }
+        }
+
+        loadDetail();
+    </script>
+</section>
+</body>
+</html>

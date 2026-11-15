@@ -118,6 +118,20 @@ public class Reservation extends BaseEntity {
 		return reservation;
 	}
 
+	/**
+	 * 예약 객실과 날짜를 변경합니다.
+	 * 날짜·중복 예약 등의 검증은 서비스에서 먼저 처리합니다.
+	 */
+	public void changeSchedule(
+			Long roomId,
+			LocalDate checkInDate,
+			LocalDate checkOutDate
+	) {
+		this.roomId = roomId;
+		this.checkInDate = checkInDate;
+		this.checkOutDate = checkOutDate;
+	}
+
 	/** 상태 변경. 허용되지 않는 변경이면 BusinessException. */
 	public void changeStatus(ReservationStatus next) {
 		if (!status.canChangeTo(next)) {
