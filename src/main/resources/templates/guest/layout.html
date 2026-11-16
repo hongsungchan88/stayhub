@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<!--/*
+  게스트 공통 레이아웃 (Bootstrap 4.6.1). 상단 메뉴 + 본문 + 하단 관리자 로그인 링크.
+
+  이 화면이 하는 일
+    각 게스트 화면이 제목·현재 메뉴·본문(<section>)을 넘기면 이 틀에 끼워서 그립니다. (Thymeleaf fragment)
+    관리자 AdminLTE 레이아웃과 달리 로그인·좌측 메뉴가 없습니다. 라이브러리 버전은 관리자 레이아웃과 같은 고정 버전입니다.
+    토스트(toast·showError)는 AdminLTE 기능이라 여기서는 쓰지 않습니다. 오류는 화면 안에 글자로 보여 주세요.
+
+  쓰는 법 (내 화면 파일 맨 위)
+    <html xmlns:th="http://www.thymeleaf.org"
+          th:replace="~{guest/layout :: layout('화면 제목', 'intro', ~{::section})}">
+    <body><section> ...본문과 <script>... </section></body></html>
+    두 번째 값은 상단 메뉴에서 굵게 표시할 메뉴: 'intro' | 'guidebook' | 'reserve' | 'my-reservation'
+
+  따라 만들 때 바꿀 곳
+    없습니다. 복사하지 마세요.
+    GST-03·04 화면이 생기면 아래 "준비 중" 메뉴 두 개를 링크로 바꿉니다(★ 로 검색).
+*/-->
+<html lang="ko" xmlns:th="http://www.thymeleaf.org" th:fragment="layout(title, menu, content)">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="|${title} - stayhub|">stayhub</title>
+
+    <!-- 버전 고정. 관리자 레이아웃(admin-lte@3.2.0)이 쓰는 버전과 같습니다. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.1/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.4/css/all.min.css">
+    <!-- 화면 본문의 <script> 가 바로 쓸 수 있도록 head 에서 먼저 불러옵니다. stayhub.js 는 jQuery 가 필요합니다. -->
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.1/dist/js/bootstrap.bundle.min.js"></script>
+    <script th:src="@{/js/stayhub.js}"></script>
+</head>
+<body class="bg-light d-flex flex-column min-vh-100">
+
+<nav class="navbar navbar-expand-md navbar-light bg-white border-bottom">
+    <div class="container">
+        <a class="navbar-brand font-weight-bold" th:href="@{/}">stayhub</a>
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#guestMenu"
+                aria-controls="guestMenu" aria-expanded="false" aria-label="메뉴 열기">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="guestMenu">
+            <ul class="navbar-nav ml-auto">
+                <li class="nav-item" th:classappend="${menu == 'intro'} ? 'active'">
+                    <a class="nav-link" th:href="@{/}" th:attr="aria-current=${menu == 'intro'} ? 'page'">숙소 소개</a>
+                </li>
+                <li class="nav-item" th:classappend="${menu == 'guidebook'} ? 'active'">
+                    <a class="nav-link" th:href="@{/guidebook}" th:attr="aria-current=${menu == 'guidebook'} ? 'page'">가이드북</a>
+                </li>
+                <!--/* ★ GST-03 이 생기면 링크로: <a class="nav-link" th:href="@{/reserve}">예약하기</a> */-->
+                <li class="nav-item">
+                    <span class="nav-link disabled" aria-disabled="true">예약하기 <small>(준비 중)</small></span>
+                </li>
+                <!--/* ★ GST-04 가 생기면 링크로 */-->
+                <li class="nav-item">
+                    <span class="nav-link disabled" aria-disabled="true">내 예약 조회 <small>(준비 중)</small></span>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<main class="container py-4 flex-grow-1">
+    <th:block th:replace="${content}">본문</th:block>
+</main>
+
+<footer class="container py-3 text-right">
+    <a th:href="@{/login}" class="small text-muted">관리자 로그인</a>
+</footer>
+
+</body>
+</html>
