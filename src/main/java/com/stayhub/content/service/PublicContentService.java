@@ -22,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p><b>이 파일이 하는 일</b>
  * <br>기존 관리자용 서비스의 조회를 그대로 불러, 게스트에게 보여 줄 값만 골라 담습니다.
- * 새 규칙은 하나뿐입니다: 숙소가 PUBLISHED 가 아니면(DRAFT 거나 없으면) "준비 중인 숙소입니다."
+ * 새 규칙은 하나뿐입니다: 숙소가 PUBLISHED 가 아니면(DRAFT 거나 없으면) "준비 중인 숙소입니다." ({@link #requirePublished})
  * 쓰기 메서드는 없습니다. 만들지 마세요 — 이 서비스를 부르는 /api/public/** 는 로그인 없이 열려 있습니다.
  */
 @Service
@@ -51,11 +51,19 @@ public class PublicContentService {
 		this.guidebookService = guidebookService;
 	}
 
-	/** 숙소 소개. PUBLISHED 가 아니면 BusinessException(준비 중). */
-	public PublicPropertyResponse getProperty() {
-		Property property = propertyRepository.findById(PropertyScope.DEFAULT_PROPERTY_ID)
+	/**
+	 * 숙소가 PUBLISHED 인지 확인합니다. 아니면(DRAFT 거나 없으면) BusinessException(준비 중) → 400.
+	 * 게스트 경로의 공개 여부 규칙은 여기 한 곳뿐입니다. 숙소 소개와 게스트 예약(PublicReservationService)이 부릅니다.
+	 */
+	public Property requirePublished() {
+		return propertyRepository.findById(PropertyScope.DEFAULT_PROPERTY_ID)
 				.filter(p -> p.getStatus() == PropertyStatus.PUBLISHED)
 				.orElseThrow(() -> new BusinessException(NOT_READY_MESSAGE));
+	}
+
+	/** 숙소 소개. PUBLISHED 가 아니면 BusinessException(준비 중). */
+	public PublicPropertyResponse getProperty() {
+		Property property = requirePublished();
 
 		// 시설: 숙소에 체크된 코드만, 시설 목록의 sort_order 순 (use_yn = false 인 시설은 목록에 없어 빠집니다)
 		// shortcut: 시설 목록·사진 목록 모두 첫 페이지(20건)만 봅니다. 사진은 정책상 최대 10장이고 시설은 3종이라 충분. 20건을 넘기면 페이지를 이어 부르기

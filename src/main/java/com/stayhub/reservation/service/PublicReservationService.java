@@ -1,6 +1,7 @@
 package com.stayhub.reservation.service;
 
 import com.stayhub.common.BusinessException;
+import com.stayhub.content.service.PublicContentService;
 import com.stayhub.reservation.dto.PublicAvailabilityResponse;
 import com.stayhub.reservation.dto.PublicReservationRequest;
 import com.stayhub.reservation.dto.PublicReservationResponse;
@@ -24,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
  * 예약 생성은 {@link ReservationService#create} 를 그대로 부릅니다(객실 락 → 겹침 검사 → 인원 검사가 거기 있음).
  * 겹침·인원 규칙을 여기 새로 만들지 마세요.
  * 새 규칙은 게스트 입력 검증 하나뿐입니다: 체크인 ≥ 오늘, 체크아웃 > 체크인, 최대 30박, 인원 ≥ 1.
+ * 숙소가 PUBLISHED 가 아니면 조회·생성 모두 {@link PublicContentService#requirePublished} 가 "준비 중인 숙소입니다."로 막습니다.
  *
  * <p>가격 = rooms.base_price × 박수 (동적 요금 ROM-002 는 v2). 결제는 1차에 없습니다(체크인 때 현장 결제).
  * 게스트 예약은 user_id·channel_id 모두 NULL — 채널 NULL 은 목록·통계에서 "직접 예약"으로 묶입니다.
@@ -39,21 +41,25 @@ public class PublicReservationService {
 	private final ReservationService reservationService;
 	private final ReservationRepository reservationRepository;
 	private final RoomRepository roomRepository;
+	private final PublicContentService publicContentService;
 
 	public PublicReservationService(
 			ReservationService reservationService,
 			ReservationRepository reservationRepository,
-			RoomRepository roomRepository
+			RoomRepository roomRepository,
+			PublicContentService publicContentService
 	) {
 		this.reservationService = reservationService;
 		this.reservationRepository = reservationRepository;
 		this.roomRepository = roomRepository;
+		this.publicContentService = publicContentService;
 	}
 
 	/**
 	 * 빈 객실 목록. 없으면 같은 박수로 체크인을 하루씩 늦춰 14일 안에서 빈 객실이 있는 첫 날짜 3개를 함께 돌려줍니다.
 	 */
 	public PublicAvailabilityResponse getAvailability(LocalDate checkIn, LocalDate checkOut, Integer guests) {
+		publicContentService.requirePublished();
 		validate(checkIn, checkOut, guests);
 		long nights = ChronoUnit.DAYS.between(checkIn, checkOut);
 
@@ -85,6 +91,7 @@ public class PublicReservationService {
 	 */
 	@Transactional
 	public PublicReservationResponse create(PublicReservationRequest request) {
+		publicContentService.requirePublished();
 		validate(request.checkIn(), request.checkOut(), request.guestCount());
 
 		Reservation reservation = reservationService.create(

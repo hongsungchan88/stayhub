@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import com.stayhub.common.PropertyScope;
+import com.stayhub.content.service.PublicContentService;
 import com.stayhub.reservation.entity.ReservationStatus;
 import com.stayhub.reservation.repository.ReservationRepository;
 import com.stayhub.reservation.service.ReservationService;
@@ -67,6 +68,16 @@ class PublicReservationApiTest {
 	@BeforeEach
 	void setUp() {
 		tag = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+		saveProperty("PUBLISHED");
+	}
+
+	/** 게스트 경로는 숙소(property_id = 1)가 PUBLISHED 일 때만 열립니다. PublicContentApiTest.saveProperty 와 같은 방식. */
+	private void saveProperty(String status) {
+		jdbcTemplate.update("""
+				INSERT INTO properties (property_id, property_name, description, status, created_at, updated_at)
+				VALUES (?, '바다 앞 펜션', '소개', ?, NOW(), NOW())
+				ON DUPLICATE KEY UPDATE status = VALUES(status)
+				""", PropertyScope.DEFAULT_PROPERTY_ID, status);
 	}
 
 	private Long room(int maxOccupancy) {
@@ -220,6 +231,34 @@ class PublicReservationApiTest {
 						.content(json(roomId, DAY.plusDays(5), DAY.plusDays(6), 1).replace("홍길동", " ")))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.message").value("guestName: 예약자 이름을 입력해 주세요."));
+	}
+
+	@Test
+	@DisplayName("숙소가 DRAFT 면 빈 객실 조회는 '준비 중인 숙소입니다.'")
+	void draftPropertyBlocksAvailability() throws Exception {
+		room(4);
+		saveProperty("DRAFT");
+
+		available(DAY, DAY.plusDays(1), 1)
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value(PublicContentService.NOT_READY_MESSAGE));
+	}
+
+	@Test
+	@DisplayName("숙소가 DRAFT 면 예약 생성도 '준비 중인 숙소입니다.' 이고 reservations 행이 늘지 않는다")
+	void draftPropertyBlocksCreate() throws Exception {
+		Long roomId = room(4);
+		saveProperty("DRAFT");
+		long before = reservationRepository.count();
+
+		mockMvc.perform(post("/api/public/reservations").contentType(MediaType.APPLICATION_JSON)
+						.content(json(roomId, DAY, DAY.plusDays(1), 1)))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value(PublicContentService.NOT_READY_MESSAGE));
+
+		assertThat(reservationRepository.count()).isEqualTo(before);
 	}
 
 	@Test
