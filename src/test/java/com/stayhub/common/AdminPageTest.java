@@ -93,8 +93,8 @@ class AdminPageTest {
 	@DisplayName("화면이 아직 없는 메뉴 주소는 준비 중 화면, 가이드북은 목록 화면")
 	void notYetBuiltMenuShowsReady() throws Exception {
 		MockHttpSession host = sessionOf(UserRole.HOST);
-		// 예시 주소는 화면이 가장 늦게 생기는 메뉴(커뮤니케이션 W-306, 11/16~). /admin/payments 는 SCR-PAY-01 로 생겨서 바꿈
-		mockMvc.perform(get("/admin/messages").session(host))
+		// 예시 주소는 아직 화면이 없는 메뉴. /admin/payments(SCR-PAY-01)·/admin/messages(SCR-COM-01) 가 생겨서 바꿈
+		mockMvc.perform(get("/admin/channel-sync-logs").session(host))
 				.andExpect(status().isOk())
 				.andExpect(view().name("admin/ready"));
 		mockMvc.perform(get("/admin/guidebooks").session(host))
