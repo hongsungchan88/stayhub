@@ -15,7 +15,7 @@
 
   따라 만들 때 바꿀 곳
     없습니다. 복사하지 마세요.
-    GST-03·04 화면이 생기면 아래 "준비 중" 메뉴 두 개를 링크로 바꿉니다(★ 로 검색).
+    GST-04 화면이 생기면 아래 "준비 중" 메뉴를 링크로 바꿉니다(★ 로 검색).
 */-->
 <html lang="ko" xmlns:th="http://www.thymeleaf.org" th:fragment="layout(title, menu, content)">
 <head>
@@ -48,9 +48,8 @@
                 <li class="nav-item" th:classappend="${menu == 'guidebook'} ? 'active'">
                     <a class="nav-link" th:href="@{/guidebook}" th:attr="aria-current=${menu == 'guidebook'} ? 'page'">가이드북</a>
                 </li>
-                <!--/* ★ GST-03 이 생기면 링크로: <a class="nav-link" th:href="@{/reserve}">예약하기</a> */-->
-                <li class="nav-item">
-                    <span class="nav-link disabled" aria-disabled="true">예약하기 <small>(준비 중)</small></span>
+                <li class="nav-item" th:classappend="${menu == 'reserve'} ? 'active'">
+                    <a class="nav-link" th:href="@{/reserve}" th:attr="aria-current=${menu == 'reserve'} ? 'page'">예약하기</a>
                 </li>
                 <!--/* ★ GST-04 가 생기면 링크로 */-->
                 <li class="nav-item">
