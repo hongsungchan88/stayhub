@@ -106,6 +106,7 @@ class PublicContentApiTest {
 	@Test
 	@DisplayName("로그인 없이 가이드북이 200 이고, ACTIVE 만 노출 순서대로, 카테고리 필터, 내부 값 없음")
 	void guidebooks() throws Exception {
+		saveProperty("PUBLISHED");
 		guidebookRepository.save(Guidebook.create(PropertyScope.DEFAULT_PROPERTY_ID, GuidebookCategory.WIFI, "비밀번호", "1234", 2));
 		guidebookRepository.save(Guidebook.create(PropertyScope.DEFAULT_PROPERTY_ID, GuidebookCategory.PARKING, "주차장", "건물 뒤", 1));
 		Guidebook deleted = Guidebook.create(PropertyScope.DEFAULT_PROPERTY_ID, GuidebookCategory.WIFI, "삭제된 안내", "x", 0);
@@ -124,6 +125,18 @@ class PublicContentApiTest {
 
 		mockMvc.perform(get("/api/public/guidebooks").param("category", "WIFI"))
 				.andExpect(jsonPath("$.data[*].title").value(Matchers.contains("비밀번호")));
+	}
+
+	@Test
+	@DisplayName("숙소가 DRAFT 면 가이드북도 '준비 중인 숙소입니다.'")
+	void draftPropertyBlocksGuidebooks() throws Exception {
+		saveProperty("DRAFT");
+		guidebookRepository.save(Guidebook.create(PropertyScope.DEFAULT_PROPERTY_ID, GuidebookCategory.WIFI, "비밀번호", "1234", 1));
+
+		mockMvc.perform(get("/api/public/guidebooks"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value("준비 중인 숙소입니다."));
 	}
 
 	@Test
