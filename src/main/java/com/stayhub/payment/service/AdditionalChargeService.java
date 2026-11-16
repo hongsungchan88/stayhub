@@ -95,6 +95,27 @@ public class AdditionalChargeService {
 	}
 
 	/**
+	 * 이 예약에 미정산(is_settled = FALSE) 추가 요금이 있는지 알려 줍니다 (PAY-002, RSV-004).
+	 * 체크아웃 화면에서 [체크아웃] 버튼을 비활성으로 둘지 정할 때 씁니다(SCR-RSV-05).
+	 */
+	public boolean hasUnsettledCharges(Long reservationId) {
+		return additionalChargeRepository.existsByReservationIdAndIsSettledFalse(reservationId);
+	}
+
+	/**
+	 * 체크아웃 전 확인 (PAY-002 "미납 시 체크아웃 보류", RSV-004 "미정산 금액 존재 시 체크아웃 차단").
+	 * 미정산 추가 요금이 있으면 BusinessException을 던집니다.
+	 *
+	 * <p>{@code ReservationService.changeStatus}의 CHECKED_OUT 처리에서 상태를 바꾸기 전에 부릅니다.
+	 * 같은 트랜잭션에서 예외가 나므로 예약 상태 변경도 함께 되돌려집니다.
+	 */
+	public void checkAllSettled(Long reservationId) {
+		if (hasUnsettledCharges(reservationId)) {
+			throw new BusinessException("정산되지 않은 추가 요금이 있어 체크아웃할 수 없습니다. 추가 요금을 먼저 정산해 주세요.");
+		}
+	}
+
+	/**
 	 * 합산 정보를 확인합니다 (PAY-002). 합산하면 같은 예약의 결제를 지정해야 하고, 합산하지 않으면 결제를 지정할 수 없습니다.
 	 * 이 확인이 없으면 다른 예약의 결제 합계에 금액이 더해질 수 있습니다.
 	 * 합산은 결제 완료(COMPLETED) 결제에만 합니다. 실패·환불 중·환불된 결제에 더하면 받을 수 없는 금액이 합계에 잡힙니다.
