@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<!--/*
+  예약 목록 SCR-RSV-01 (/admin/reservations).
+  GET /api/reservations로 이름·연락처·예약번호·채널을 검색합니다.
+  공통 레이아웃과 stayhub.js를 사용하며, 한 페이지는 20건입니다.
+  예약 삭제 기능은 없습니다.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{admin/layout :: layout('예약 목록 / 통합 검색', ~{::section})}">
+<body>
+<section class="content">
+    <div class="container-fluid">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">예약 검색</h2>
+            </div>
+            <div class="card-body">
+                <form id="searchForm">
+                    <div class="form-row align-items-end">
+                        <div class="form-group col-md-3">
+                            <label for="searchType">검색 항목</label>
+                            <select id="searchType" name="searchType"
+                                    class="form-control">
+                                <option value="guestName">예약자 이름</option>
+                                <option value="guestPhone">연락처</option>
+                                <option value="reservationCode">예약번호</option>
+                                <option value="channelName">채널</option>
+                            </select>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="keyword">검색어</label>
+                            <input type="text" id="keyword" name="keyword"
+                                   class="form-control" maxlength="100"
+                                   placeholder="검색어를 입력하세요">
+                        </div>
+                        <div class="form-group col-md-3">
+                            <button type="submit" class="btn btn-primary">
+                                검색
+                            </button>
+                            <button type="reset"
+                                    class="btn btn-outline-secondary">
+                                초기화
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header d-flex align-items-center">
+                <h2 class="card-title">예약 목록</h2>
+                <span class="text-muted ml-3" id="totalCount"
+                      aria-live="polite"></span>
+                <a th:href="@{/admin/reservations/new}"
+                   class="btn btn-primary btn-sm ml-auto">예약 등록</a>
+            </div>
+            <div class="card-body table-responsive p-0">
+                <table class="table table-hover text-nowrap mb-0">
+                    <thead>
+                    <tr>
+                        <th scope="col">예약번호</th>
+                        <th scope="col">예약자</th>
+                        <th scope="col">연락처</th>
+                        <th scope="col">객실</th>
+                        <th scope="col">채널</th>
+                        <th scope="col">체크인</th>
+                        <th scope="col">체크아웃</th>
+                        <th scope="col">인원</th>
+                        <th scope="col">상태</th>
+                    </tr>
+                    </thead>
+                    <tbody id="rows">
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-5">
+                            예약 목록을 불러오는 중입니다.
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-footer" id="pagination"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api/reservations';
+        const STATUS_LABELS = {
+            CONFIRMED: '예약 확정',
+            CANCELLED: '취소',
+            NOSHOW: '노쇼',
+            CHECKED_IN: '체크인 완료',
+            CHECKED_OUT: '체크아웃 완료'
+        };
+
+        let search = { searchType: 'guestName', keyword: '' };
+        let requestSequence = 0;
+        const searchForm = document.getElementById('searchForm');
+
+        searchForm.addEventListener('submit', e => {
+            e.preventDefault();
+            search = {
+                searchType: searchForm.elements.searchType.value,
+                keyword: searchForm.elements.keyword.value.trim()
+            };
+            load(0);
+        });
+
+        searchForm.addEventListener('reset', () => {
+            search = { searchType: 'guestName', keyword: '' };
+            load(0);
+        });
+
+        async function load(page) {
+            const sequence = ++requestSequence;
+
+            try {
+                const params = new URLSearchParams({ ...search, page });
+                const result = await api('GET', `${API_URL}?${params}`);
+
+                // 빠르게 연속 검색했을 때 이전 결과가 덮어쓰지 않도록 합니다.
+                if (sequence !== requestSequence) return;
+
+                document.getElementById('totalCount').textContent =
+                    `총 ${result.totalElements}건`;
+
+                renderRows(document.getElementById('rows'), result.content, item => `
+            <tr>
+              <td>
+                <a href="/admin/reservations/${esc(item.id)}">${esc(item.reservationCode)}
+                </a>
+              </td>
+              <td>${esc(item.guestName)}</td>
+              <td>${esc(item.guestPhone)}</td>
+              <td>${esc(item.roomNumber)}</td>
+              <td>${esc(item.channelName)}</td>
+              <td>${esc(formatDate(item.checkInDate))}</td>
+              <td>${esc(formatDate(item.checkOutDate))}</td>
+              <td>${esc(item.guestCount)}명</td>
+              <td>${esc(STATUS_LABELS[item.status] || item.status)}</td>
+            </tr>
+          `);
+
+                renderPagination(
+                    document.getElementById('pagination'), result, load
+                );
+            } catch (error) {
+                if (sequence !== requestSequence) return;
+
+                document.getElementById('rows').innerHTML =
+                    '<tr><td colspan="9" class="text-center text-muted py-5">' +
+                    '목록을 불러오지 못했습니다. 다시 검색해 주세요.</td></tr>';
+
+                document.getElementById('totalCount').textContent = '';
+                document.getElementById('pagination').innerHTML = '';
+                showError(error);
+            }
+        }
+
+        load(0);
+    </script>
+</section>
+</body>
+</html>
