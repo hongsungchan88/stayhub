@@ -53,7 +53,7 @@ public class PublicContentService {
 
 	/**
 	 * 숙소가 PUBLISHED 인지 확인합니다. 아니면(DRAFT 거나 없으면) BusinessException(준비 중) → 400.
-	 * 게스트 경로의 공개 여부 규칙은 여기 한 곳뿐입니다. 숙소 소개와 게스트 예약(PublicReservationService)이 부릅니다.
+	 * 게스트 경로의 공개 여부 규칙은 여기 한 곳뿐입니다. 숙소 소개·가이드북과 게스트 예약(PublicReservationService)이 부릅니다.
 	 */
 	public Property requirePublished() {
 		return propertyRepository.findById(PropertyScope.DEFAULT_PROPERTY_ID)
@@ -80,11 +80,12 @@ public class PublicContentService {
 	}
 
 	/**
-	 * 가이드북. ACTIVE 만, sort_order 순 (기존 {@link GuidebookService#getList} 그대로).
+	 * 가이드북. 숙소가 PUBLISHED 가 아니면 BusinessException(준비 중). ACTIVE 만, sort_order 순 (기존 {@link GuidebookService#getList} 그대로).
 	 *
 	 * @param category 비어 있으면 전체
 	 */
 	public List<PublicGuidebookResponse> getGuidebooks(GuidebookCategory category) {
+		requirePublished();
 		// shortcut: 첫 페이지(20건)만 보여 줍니다(총괄 결정). 한 카테고리·전체가 20건을 넘기 시작하면 페이지를 이어 부르기
 		return guidebookService.getList(category, 0).content().stream()
 				.map(PublicGuidebookResponse::from)
