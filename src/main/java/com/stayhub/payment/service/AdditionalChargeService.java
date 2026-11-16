@@ -10,6 +10,16 @@ import com.stayhub.payment.entity.Payment;
 import com.stayhub.payment.entity.PaymentStatus;
 import com.stayhub.payment.repository.AdditionalChargeRepository;
 import com.stayhub.payment.repository.PaymentRepository;
+import com.stayhub.reservation.entity.Reservation;
+import com.stayhub.reservation.entity.ReservationStatus;
+import com.stayhub.reservation.repository.ReservationRepository;
+import java.util.EnumSet;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -33,12 +43,21 @@ public class AdditionalChargeService {
 			Sort.Order.asc("id")
 	);
 
+	/** 추가 요금을 새로 걸 수 없는 예약 상태. 취소·노쇼 예약에는 받을 손님이 없습니다. */
+	private static final Set<ReservationStatus> CLOSED_STATUSES = EnumSet.of(ReservationStatus.CANCELLED, ReservationStatus.NOSHOW);
+
 	private final AdditionalChargeRepository additionalChargeRepository;
 	private final PaymentRepository paymentRepository;
+	private final ReservationRepository reservationRepository;
 
-	public AdditionalChargeService(AdditionalChargeRepository additionalChargeRepository, PaymentRepository paymentRepository) {
+	public AdditionalChargeService(
+			AdditionalChargeRepository additionalChargeRepository,
+			PaymentRepository paymentRepository,
+			ReservationRepository reservationRepository
+	) {
 		this.additionalChargeRepository = additionalChargeRepository;
 		this.paymentRepository = paymentRepository;
+		this.reservationRepository = reservationRepository;
 	}
 
 	/**
@@ -48,17 +67,23 @@ public class AdditionalChargeService {
 	 */
 	public PageResponse<AdditionalChargeResponse> getList(int page) {
 		Pageable pageable = PageRequest.of(page, PageResponse.DEFAULT_PAGE_SIZE, LIST_SORT);
-		return PageResponse.from(additionalChargeRepository.findAll(pageable).map(AdditionalChargeResponse::from));
+		Page<AdditionalCharge> charges = additionalChargeRepository.findAll(pageable);
+		// 이 페이지의 예약을 한 번에 찾습니다(줄마다 찾으면 최대 20번 조회)
+		Set<Long> reservationIds = charges.stream().map(AdditionalCharge::getReservationId).collect(Collectors.toSet());
+		Map<Long, Reservation> reservations = reservationRepository.findAllById(reservationIds).stream()
+				.collect(Collectors.toMap(Reservation::getId, Function.identity()));
+		return PageResponse.from(charges.map(c -> AdditionalChargeResponse.from(c, reservations.get(c.getReservationId()))));
 	}
 
 	/** 상세. 없는 항목이면 BusinessException. */
 	public AdditionalChargeResponse getDetail(Long id) {
-		return AdditionalChargeResponse.from(findOrThrow(id));
+		return toResponse(findOrThrow(id));
 	}
 
 	/** 등록. 합산 정보가 맞지 않으면 BusinessException. */
 	@Transactional
 	public AdditionalChargeResponse create(AdditionalChargeCreateRequest request) {
+		validateReservationOpen(request.reservationId());
 		validateMerge(request.reservationId(), request.isMerged(), request.paymentId());
 
 		AdditionalCharge additionalCharge = AdditionalCharge.create(
@@ -70,13 +95,17 @@ public class AdditionalChargeService {
 				request.paymentId(),
 				request.isSettled()
 		);
-		return AdditionalChargeResponse.from(additionalChargeRepository.save(additionalCharge));
+		return toResponse(additionalChargeRepository.save(additionalCharge));
 	}
 
 	/** 수정. 없는 항목이거나 합산 정보가 맞지 않으면 BusinessException. */
 	@Transactional
 	public AdditionalChargeResponse update(Long id, AdditionalChargeUpdateRequest request) {
 		AdditionalCharge additionalCharge = findOrThrow(id);
+		// 예약을 바꿀 때만 확인합니다. 이미 걸린 요금은 예약이 취소된 뒤에도 정산 처리할 수 있어야 합니다
+		if (!Objects.equals(additionalCharge.getReservationId(), request.reservationId())) {
+			validateReservationOpen(request.reservationId());
+		}
 		validateMerge(request.reservationId(), request.isMerged(), request.paymentId());
 
 		additionalCharge.update(
@@ -91,7 +120,7 @@ public class AdditionalChargeService {
 		// save() 를 부르지 않아도 트랜잭션이 끝날 때 바뀐 값이 자동으로 DB 에 반영됩니다. (변경 감지)
 		// 다만 수정일시(updatedAt)는 반영되는 순간에 채워지므로, 응답에 새 값을 담으려고 먼저 반영합니다.
 		additionalChargeRepository.flush();
-		return AdditionalChargeResponse.from(additionalCharge);
+		return toResponse(additionalCharge);
 	}
 
 	/**
@@ -113,6 +142,21 @@ public class AdditionalChargeService {
 		if (hasUnsettledCharges(reservationId)) {
 			throw new BusinessException("정산되지 않은 추가 요금이 있어 체크아웃할 수 없습니다. 추가 요금을 먼저 정산해 주세요.");
 		}
+	}
+
+	/** 취소·노쇼 예약이면 BusinessException. 예약을 찾지 못하면 따로 막지 않습니다(예약 확인은 예약 담당 API 몫). */
+	private void validateReservationOpen(Long reservationId) {
+		reservationRepository.findById(reservationId)
+				.filter(r -> CLOSED_STATUSES.contains(r.getStatus()))
+				.ifPresent(r -> {
+					throw new BusinessException("취소되거나 노쇼 처리된 예약에는 추가 요금을 등록할 수 없습니다.");
+				});
+	}
+
+	/** 응답으로 바꿉니다. 예약 번호·손님 이름을 채우려고 예약을 찾습니다. */
+	private AdditionalChargeResponse toResponse(AdditionalCharge additionalCharge) {
+		return AdditionalChargeResponse.from(additionalCharge,
+				reservationRepository.findById(additionalCharge.getReservationId()).orElse(null));
 	}
 
 	/**
