@@ -26,9 +26,9 @@
                         <table class="table table-hover mb-0">
                             <thead>
                             <tr>
-                                <th style="width: 110px">채널</th>
+                                <th class="text-nowrap">채널</th>
                                 <th>게스트 / 최근 메시지</th>
-                                <th style="width: 130px">최근 수신</th>
+                                <th class="text-nowrap">최근 수신</th>
                             </tr>
                             </thead>
                             <tbody id="rows"></tbody>
@@ -95,14 +95,14 @@
           currentPage = page;
           renderRows(document.getElementById('rows'), result.content, item => `
             <tr class="${item.threadId === currentThreadId ? 'table-active' : ''}">
-              <td>${esc(item.channelName)}</td>
+              <td class="text-nowrap">${esc(item.channelName)}</td>
               <td>
                 <button type="button" class="btn btn-link p-0 text-left ${item.isRead ? '' : 'font-weight-bold'}"
                         onclick="openThread(${item.threadId})">${esc(item.guestName || '(이름 없음)')}</button>
                 ${item.needsReply ? '<span class="badge badge-warning ml-1">수동 응대 필요</span>' : ''}
                 <div class="small text-muted text-truncate" style="max-width: 260px">${esc(item.lastMessagePreview)}</div>
               </td>
-              <td class="small">${formatDateTime(item.lastMessageAt)}</td>
+              <td class="small text-nowrap">${formatDateTime(item.lastMessageAt)}</td>
             </tr>`);
           renderPagination(document.getElementById('pagination'), result, load);
         } catch (error) {
