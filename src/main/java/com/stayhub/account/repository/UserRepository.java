@@ -3,6 +3,8 @@ package com.stayhub.account.repository;
 import com.stayhub.account.entity.User;
 import com.stayhub.common.EntityStatus;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**
@@ -26,6 +28,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
 	/** 로그인용 조회. 없거나 삭제된 계정이면 빈 Optional. */
 	Optional<User> findByLoginIdAndStatus(String loginId, EntityStatus status);
+
+	/** 직원 목록 (ACC-005). ACTIVE 만. */
+	Page<User> findByStatus(EntityStatus status, Pageable pageable);
+
+	/** 직원 상세 (ACC-005). 없거나 삭제된 계정이면 빈 Optional. */
+	Optional<User> findByIdAndStatus(Long id, EntityStatus status);
 
 	/** 이메일로 조회 (비밀번호 재설정, ACC-003). 없거나 삭제된 계정이면 빈 Optional. */
 	Optional<User> findByEmailAndStatus(String email, EntityStatus status);

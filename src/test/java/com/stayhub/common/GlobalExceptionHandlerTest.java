@@ -30,7 +30,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
  * 예외 처리 테스트.
  *
  * <p><b>이 파일이 하는 일</b>
- * <br>잘못된 요청마다 {@link GlobalExceptionHandler} 가 맞는 응답 코드(400·401·404·409·500)와
+ * <br>잘못된 요청마다 {@link GlobalExceptionHandler} 가 맞는 응답 코드(400·401·403·404·409·500)와
  * {@link ApiResponse} 실패 형식으로 답하는지 확인합니다.
  *
  * <p>DB·서버를 띄우지 않습니다. 테스트 전용 컨트롤러({@link TestController})로 예외를 일부러 일으키고,
@@ -160,6 +160,15 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@Test
+	@DisplayName("권한이 없는 요청은 403이고 \"권한이 없습니다.\"가 나간다")
+	void forbiddenIs403() throws Exception {
+		mockMvc.perform(get("/test/forbidden"))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value("권한이 없습니다."));
+	}
+
+	@Test
 	@DisplayName("@Version 충돌은 409 이고 새로고침 안내 메시지가 나간다")
 	void optimisticLockIs409() throws Exception {
 		mockMvc.perform(get("/test/optimistic-lock"))
@@ -217,6 +226,11 @@ class GlobalExceptionHandlerTest {
 		@GetMapping("/test/unauthorized")
 		String unauthorized() {
 			throw new UnauthorizedException("로그인이 필요합니다.");
+		}
+
+		@GetMapping("/test/forbidden")
+		String forbidden() {
+			throw new ForbiddenException("권한이 없습니다.");
 		}
 
 		@GetMapping("/test/optimistic-lock")

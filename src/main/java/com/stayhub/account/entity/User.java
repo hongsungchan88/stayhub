@@ -163,6 +163,14 @@ public class User extends BaseEntity {
 	public boolean isLocked(LocalDateTime now) {
 		return lockoutUntil != null && now.isBefore(lockoutUntil);
 	}
+	/**
+	 * 직원 정보를 고칩니다. (직원 계정 관리, ACC-005 - 이름·역할만)
+	 * HOST 로 바꾸는 것, HOST·본인 계정을 고치는 것은 서비스에서 막습니다.
+	 */
+	public void update(String name, UserRole role) {
+		this.name = name;
+		this.role = role;
+	}
 
 	/**
 	 * 비밀번호를 바꿉니다. (비밀번호 재설정, ACC-003)
