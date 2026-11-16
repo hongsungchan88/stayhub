@@ -29,7 +29,8 @@ public class WebConfig implements WebMvcConfigurer {
 				.excludePathPatterns(
 						"/api/auth/login",
 						"/api/signup/**", // /api/signup 자체도 포함됩니다
-						"/api/password-reset/**" // 비밀번호를 잊은 사람이 부르므로 로그인 없이 (ACC-003, 총괄 확인)
+						"/api/password-reset/**", // 비밀번호를 잊은 사람이 부르므로 로그인 없이 (ACC-003, 총괄 확인)
+						"/api/public/**" // 게스트 조회 전용 GET (SCR-GST-01·02, 총괄 결정)
 						// 게스트(비로그인) API 가 생기면 여기에 추가 (예: 숙소 소개 SCR-GST-01, 비회원 예약 조회)
 				);
 		registry.addInterceptor(new AdminPageInterceptor())

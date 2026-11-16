@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<!--/*
+  숙소 소개 SCR-GST-01 (/) — 게스트(비로그인) 화면의 참고 구현. GST-03·04 담당자는 이 파일을 복사해서 시작하세요.
+
+  이 화면이 하는 일
+    GET /api/public/property 로 숙소명·소개 문구·시설·사진을 불러와 그립니다.
+    숙소가 게시(PUBLISHED) 전이면 서버가 "준비 중인 숙소입니다." 를 돌려주고, 화면은 그 문구만 보여 줍니다.
+    사진이 없으면 갤러리 영역을, 시설이 없으면 시설 영역을 숨깁니다.
+    [예약하기] 는 GST-03 이 생길 때까지 준비 중(비활성). 리뷰 영역은 CMS-005 v2 이관이라 없습니다.
+
+  따라 만들 때 바꿀 곳 (★ 로 검색)
+    - layout(...) 의 화면 제목과 현재 메뉴
+    - 본문 HTML — 내 화면 모양으로
+    - <script> 맨 위 API 주소와 render() — 내 API 응답에 맞게
+    - 사용자가 입력한 글자는 꼭 esc() 로 감싸기. 게스트 화면이라 누구나 보므로 더 중요합니다
+    - 오류는 toast 가 아니라 화면 안(#notice)에 보여 줍니다(게스트 레이아웃에는 토스트가 없음)
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{guest/layout :: layout('숙소 소개', 'intro', ~{::section})}"><!--/* ★ 바꿀 곳: 화면 제목·현재 메뉴 */-->
+<body>
+<section>
+    <div id="notice" class="alert alert-secondary text-center py-5 d-none" role="status"></div>
+
+    <div id="property" class="d-none">
+        <h1 id="propertyName" class="h3 mb-4"></h1>
+
+        <div id="gallery" class="row d-none mb-4"></div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <h2 class="h5">숙소 소개</h2>
+                <p id="description" class="mb-0"></p>
+            </div>
+        </div>
+
+        <div id="facilitiesCard" class="card mb-4 d-none">
+            <div class="card-body">
+                <h2 class="h5">시설</h2>
+                <ul id="facilities" class="list-inline mb-0"></ul>
+            </div>
+        </div>
+
+        <div class="text-center">
+            <!--/* GST-03 이 생기면 링크로 바꿉니다 */-->
+            <button type="button" class="btn btn-primary btn-lg" disabled>예약하기 (준비 중)</button>
+        </div>
+    </div>
+
+    <script>
+      const API_URL = '/api/public/property'; // ★ 바꿀 곳
+
+      async function load() {
+        try {
+          render(await api('GET', API_URL));
+        } catch (error) {
+          if (error.shown) return; // 서버 오류는 api() 가 이미 안내했습니다
+          const notice = document.getElementById('notice');
+          notice.textContent = error.message; // 예) 준비 중인 숙소입니다.
+          notice.classList.remove('d-none');
+        }
+      }
+
+      function render(property) { // ★ 바꿀 곳: 내 API 응답에 맞게
+        document.getElementById('propertyName').textContent = property.propertyName;
+
+        // 소개 문구는 리치텍스트 HTML 로 저장되지만, 그대로 넣으면 스크립트가 실행될 수 있어 1차는 esc() 후 줄바꿈만 살립니다(HTML 서식은 2차).
+        document.getElementById('description').innerHTML = esc(property.description).replace(/\n/g, '<br>');
+
+        if (property.images.length) {
+          const gallery = document.getElementById('gallery');
+          gallery.innerHTML = property.images.map((path, i) =>
+            `<div class="col-6 col-md-4 mb-3">
+               <img src="${esc(path)}" class="img-fluid rounded w-100" style="aspect-ratio: 4 / 3; object-fit: cover"
+                    alt="${esc(property.propertyName)} 사진 ${i + 1}">
+             </div>`).join('');
+          gallery.classList.remove('d-none');
+        }
+
+        if (property.facilities.length) {
+          document.getElementById('facilities').innerHTML = property.facilities.map(name =>
+            `<li class="list-inline-item mr-4"><i class="fas fa-check text-success mr-1" aria-hidden="true"></i>${esc(name)}</li>`).join('');
+          document.getElementById('facilitiesCard').classList.remove('d-none');
+        }
+
+        document.getElementById('property').classList.remove('d-none');
+      }
+
+      load();
+    </script>
+</section>
+</body>
+</html>
