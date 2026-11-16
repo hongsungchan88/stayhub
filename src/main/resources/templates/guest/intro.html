@@ -6,7 +6,7 @@
     GET /api/public/property 로 숙소명·소개 문구·시설·사진을 불러와 그립니다.
     숙소가 게시(PUBLISHED) 전이면 서버가 "준비 중인 숙소입니다." 를 돌려주고, 화면은 그 문구만 보여 줍니다.
     사진이 없으면 갤러리 영역을, 시설이 없으면 시설 영역을 숨깁니다.
-    [예약하기] 는 GST-03 이 생길 때까지 준비 중(비활성). 리뷰 영역은 CMS-005 v2 이관이라 없습니다.
+    예약 위젯(날짜·인원 → [빈 객실 찾기])은 /reserve?checkIn=&checkOut=&guests= 로 이동합니다(SCR-GST-03). 리뷰 영역은 CMS-005 v2 이관이라 없습니다.
 
   따라 만들 때 바꿀 곳 (★ 로 검색)
     - layout(...) 의 화면 제목과 현재 메뉴
@@ -40,10 +40,29 @@
             </div>
         </div>
 
-        <div class="text-center">
-            <!--/* GST-03 이 생기면 링크로 바꿉니다 */-->
-            <button type="button" class="btn btn-primary btn-lg" disabled>예약하기 (준비 중)</button>
-        </div>
+        <!--/* 예약 위젯 (FLW-08). 날짜·인원을 담아 /reserve 로 이동하면 그 화면이 바로 빈 객실을 조회합니다 */-->
+        <form class="card" method="get" th:action="@{/reserve}" aria-labelledby="reserveTitle">
+            <div class="card-body">
+                <h2 id="reserveTitle" class="h5">예약하기</h2>
+                <div class="form-row align-items-end">
+                    <div class="col-md-4 form-group">
+                        <label for="widgetCheckIn">체크인</label>
+                        <input type="date" id="widgetCheckIn" name="checkIn" class="form-control" required>
+                    </div>
+                    <div class="col-md-4 form-group">
+                        <label for="widgetCheckOut">체크아웃</label>
+                        <input type="date" id="widgetCheckOut" name="checkOut" class="form-control" required>
+                    </div>
+                    <div class="col-md-2 form-group">
+                        <label for="widgetGuests">인원</label>
+                        <input type="number" id="widgetGuests" name="guests" class="form-control" min="1" value="2" required>
+                    </div>
+                    <div class="col-md-2 form-group">
+                        <button type="submit" class="btn btn-primary btn-block">빈 객실 찾기</button>
+                    </div>
+                </div>
+            </div>
+        </form>
     </div>
 
     <script>
@@ -84,6 +103,11 @@
 
         document.getElementById('property').classList.remove('d-none');
       }
+
+      // 예약 위젯: 오늘 이전 날짜는 고를 수 없게
+      const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      document.getElementById('widgetCheckIn').min = today;
+      document.getElementById('widgetCheckOut').min = today;
 
       load();
     </script>

@@ -19,6 +19,10 @@ import org.springframework.web.bind.annotation.RestController;
  * GET /api/public/guidebooks?category=WIFI  가이드북 (category 는 생략 가능)
  * </pre>
  * GET 만 둡니다. 다른 메서드는 405 로 막힙니다. 등록·수정·삭제를 여기 추가하면 누구나 부를 수 있게 되니 절대 추가하지 마세요.
+ *
+ * <p>/api/public 아래 쓰기 API 는 게스트 예약 생성 POST /api/public/reservations 하나뿐입니다
+ * ({@link com.stayhub.reservation.controller.PublicReservationController}, SCR-GST-03, 총괄 결정).
+ * 그 밖의 쓰기 API 는 /api/public 에 두지 않습니다.
  */
 @RestController
 @RequestMapping("/api/public")

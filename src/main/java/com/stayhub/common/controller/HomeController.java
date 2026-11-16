@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.GetMapping;
  * <pre>
  * GET /           SCR-GST-01 숙소 소개   → templates/guest/intro.html
  * GET /guidebook  SCR-GST-02 가이드북 열람 → templates/guest/guidebook.html
+ * GET /reserve    SCR-GST-03 예약하기     → templates/guest/reserve.html (?checkIn=&checkOut=&guests= 가 있으면 바로 조회)
  * </pre>
  * 로그인 확인은 /api/**·/admin/** 에만 걸리므로 이 주소들은 로그인 없이 열립니다(WebConfig).
  */
@@ -23,5 +24,10 @@ public class HomeController {
 	@GetMapping("/guidebook")
 	public String guidebook() {
 		return "guest/guidebook";
+	}
+
+	@GetMapping("/reserve")
+	public String reserve() {
+		return "guest/reserve";
 	}
 }
