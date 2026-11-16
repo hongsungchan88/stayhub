@@ -20,8 +20,8 @@ import org.springframework.test.web.servlet.MockMvc;
 /**
  * 추가 요금 등록 화면 테스트 (SCR-PAY-02).
  *
- * <p>화면 파일이 레이아웃과 함께 그려지는지만 확인합니다. 등록·수정·합산 규칙은 화면의 자바스크립트가 API 로 처리하므로
- * {@code AdditionalChargeServiceTest} 가 확인합니다.
+ * <p>화면 파일이 레이아웃과 함께 그려지는지만 확인합니다. 등록·수정·합산 규칙은 화면의 자바스크립트가 API로 처리하므로
+ * {@code AdditionalChargeServiceTest}가 확인합니다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -31,21 +31,23 @@ class AdditionalChargePageTest {
 	private MockMvc mockMvc;
 
 	@Test
-	@DisplayName("로그인 없이 /admin/additional-charges 면 /login?expired 로 이동")
+	@DisplayName("로그인 없이 /admin/additional-charges면 /login?expired로 이동")
 	void withoutLoginRedirects() throws Exception {
 		mockMvc.perform(get("/admin/additional-charges"))
 				.andExpect(redirectedUrl("/login?expired"));
 	}
 
 	@Test
-	@DisplayName("프런트(FRONT)로 로그인하면 추가 요금 목록과 등록 팝업이 그려진다")
+	@DisplayName("프런트(FRONT)로 로그인하면 추가 요금 목록과 등록 팝업(예약 선택·검색 포함)이 그려진다")
 	void listRenders() throws Exception {
 		mockMvc.perform(get("/admin/additional-charges").session(sessionOf(UserRole.FRONT)))
 				.andExpect(status().isOk())
 				.andExpect(view().name("admin/additional-charges/list"))
 				.andExpect(content().string(Matchers.containsString("추가 요금 등록")))
 				.andExpect(content().string(Matchers.containsString("id=\"chargeModal\"")))
-				.andExpect(content().string(Matchers.containsString("name=\"paymentId\"")));
+				.andExpect(content().string(Matchers.containsString("name=\"paymentId\"")))
+				.andExpect(content().string(Matchers.containsString("<select id=\"reservationId\" name=\"reservationId\"")))
+				.andExpect(content().string(Matchers.containsString("id=\"reservationSearch\"")));
 	}
 
 	private MockHttpSession sessionOf(UserRole role) {
