@@ -85,7 +85,7 @@ class PaymentRefundTest {
 	}
 
 	@Test
-	@DisplayName("체크인 3일 전이 지나서 요청했으면 부분 환불 (임시 비율 50%)")
+	@DisplayName("체크인 3일 전이 지나서 요청했으면 부분 환불 (비율 50%)")
 	void partialRefundAfterDeadline() {
 		Long paymentId = paidFor(TODAY.plusDays(2));
 

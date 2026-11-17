@@ -31,6 +31,10 @@ replay_pid*
 .classpath
 .project
 
+# AI·디자인 도구 작업 폴더 (Claude Code launch.json·worktree, impeccable 작업 파일)
+.claude/
+.impeccable/
+
 # 빌드 결과물
 build/
 out/
