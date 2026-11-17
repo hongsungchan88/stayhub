@@ -16,7 +16,14 @@ import com.stayhub.payment.repository.AdditionalChargeRepository;
 import com.stayhub.payment.repository.PaymentRepository;
 import com.stayhub.payment.service.AdditionalChargeService;
 import com.stayhub.payment.service.PaymentService;
+import com.stayhub.common.PropertyScope;
+import com.stayhub.reservation.entity.Reservation;
+import com.stayhub.reservation.entity.ReservationStatus;
+import com.stayhub.reservation.repository.ReservationRepository;
+import com.stayhub.room.entity.Room;
+import com.stayhub.room.repository.RoomRepository;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -50,6 +57,12 @@ class AdditionalChargeServiceTest {
 
 	@Autowired
 	private ChannelRepository channelRepository;
+
+	@Autowired
+	private ReservationRepository reservationRepository;
+
+	@Autowired
+	private RoomRepository roomRepository;
 
 	@BeforeEach
 	void setUp() {
@@ -186,6 +199,60 @@ class AdditionalChargeServiceTest {
 
 		assertThat(additionalChargeService.hasUnsettledCharges(2L)).isFalse();
 		additionalChargeService.checkAllSettled(2L);
+	}
+
+	@Test
+	@DisplayName("목록 응답에 예약 번호와 손님 이름이 함께 나온다")
+	void listIncludesReservationInfo() {
+		Reservation reservation = saveReservation("RCHG-0001", null);
+		additionalChargeService.create(mergeRequest(reservation.getId(), false, null));
+
+		AdditionalChargeResponse row = additionalChargeService.getList(0).content().get(0);
+		assertThat(row.reservationCode()).isEqualTo("RCHG-0001");
+		assertThat(row.guestName()).isEqualTo("추가요금손님");
+	}
+
+	@Test
+	@DisplayName("취소·노쇼 예약에는 추가 요금을 등록할 수 없다")
+	void closedReservationRejected() {
+		for (ReservationStatus status : new ReservationStatus[] {ReservationStatus.CANCELLED, ReservationStatus.NOSHOW}) {
+			Long reservationId = saveReservation("RCHG-" + status, status).getId();
+
+			assertThatThrownBy(() -> additionalChargeService.create(mergeRequest(reservationId, false, null)))
+					.isInstanceOf(BusinessException.class)
+					.hasMessage("취소되거나 노쇼 처리된 예약에는 추가 요금을 등록할 수 없습니다.");
+		}
+	}
+
+	@Test
+	@DisplayName("이미 걸린 추가 요금은 예약이 취소된 뒤에도 정산 처리할 수 있지만, 취소된 예약으로 옮길 수는 없다")
+	void chargeOnCancelledReservationCanStillBeSettled() {
+		Reservation reservation = saveReservation("RCHG-0002", null);
+		AdditionalChargeResponse created = additionalChargeService.create(mergeRequest(reservation.getId(), false, null));
+		reservation.changeStatus(ReservationStatus.CANCELLED);
+		reservationRepository.flush();
+
+		AdditionalChargeResponse settled = additionalChargeService.update(created.id(), new AdditionalChargeUpdateRequest(
+				reservation.getId(), AdditionalChargeType.MINIBAR, "생수 2병", new BigDecimal("4000.00"), false, null, true));
+		assertThat(settled.isSettled()).isTrue();
+
+		AdditionalChargeResponse other = additionalChargeService.create(createRequest(AdditionalChargeType.SERVICE));
+		assertThatThrownBy(() -> additionalChargeService.update(other.id(), new AdditionalChargeUpdateRequest(
+				reservation.getId(), AdditionalChargeType.SERVICE, "생수 2병", new BigDecimal("4000.00"), false, null, null)))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage("취소되거나 노쇼 처리된 예약에는 추가 요금을 등록할 수 없습니다.");
+	}
+
+	/** 테스트용 예약을 저장합니다. status가 있으면 그 상태로 바꿉니다. */
+	private Reservation saveReservation(String code, ReservationStatus status) {
+		Long roomId = roomRepository.save(Room.create(
+				PropertyScope.DEFAULT_PROPERTY_ID, code, "STANDARD", new BigDecimal("100000.00"), 2)).getId();
+		Reservation reservation = Reservation.create(code, null, "추가요금손님", "010-0000-0000", roomId, null,
+				LocalDate.of(2026, 12, 1), LocalDate.of(2026, 12, 2), 1);
+		if (status != null) {
+			reservation.changeStatus(status);
+		}
+		return reservationRepository.saveAndFlush(reservation);
 	}
 
 	/** 테스트용 결제를 등록하고 ID 를 돌려줍니다. */
