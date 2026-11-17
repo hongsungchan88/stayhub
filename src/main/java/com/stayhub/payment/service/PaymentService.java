@@ -4,6 +4,7 @@ import com.stayhub.channel.entity.Channel;
 import com.stayhub.channel.repository.ChannelRepository;
 import com.stayhub.common.BusinessException;
 import com.stayhub.common.PageResponse;
+import com.stayhub.payment.dto.CancelRefundResponse;
 import com.stayhub.payment.dto.PaymentCreateRequest;
 import com.stayhub.payment.dto.PaymentRefundRejectRequest;
 import com.stayhub.payment.dto.PaymentResponse;
@@ -20,6 +21,7 @@ import com.stayhub.reservation.repository.ReservationRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.List;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -179,13 +181,71 @@ public class PaymentService {
 				.map(Reservation::getCheckInDate)
 				.orElseThrow(() -> new BusinessException("결제의 예약을 찾을 수 없습니다."));
 
-		if (isFullRefund(payment.getRefundRequestDate(), checkInDate)) {
-			payment.refund(PaymentRefundRule.FULL, payment.getPaymentAmount());
-		} else {
-			payment.refund(PaymentRefundRule.PARTIAL, partialAmount(payment.getPaymentAmount()));
-		}
+		applyRefund(payment, checkInDate);
 		paymentRepository.flush();
 		return PaymentResponse.from(payment);
+	}
+
+	/**
+	 * 예약 취소 환불 미리보기 (RSV-002, 취소 팝업 SCR-RSV-04). 오늘 취소하면 얼마를 돌려주는지 계산만 하고 아무것도 바꾸지 않습니다.
+	 *
+	 * <p>대상은 그 예약의 결제 완료(COMPLETED) 결제뿐이고, 규칙은 {@link #refund} 와 같습니다(요청일 = 오늘).
+	 * 결제가 없으면 규정 NONE, 금액 0. 예약이 없으면 BusinessException.
+	 */
+	public CancelRefundResponse previewCancelRefund(Long reservationId) {
+		LocalDate checkInDate = findCheckInDateOrThrow(reservationId);
+		LocalDate today = LocalDate.now();
+		PaymentRefundRule rule = refundRule(today, checkInDate);
+		List<CancelRefundResponse.Item> items = paymentRepository
+				.findByReservationIdAndPaymentStatus(reservationId, PaymentStatus.COMPLETED).stream()
+				.map(p -> new CancelRefundResponse.Item(
+						p.getId(), p.getPaymentAmount(), refundAmount(rule, p.getPaymentAmount())))
+				.toList();
+		return CancelRefundResponse.of(reservationId, checkInDate, items.isEmpty() ? PaymentRefundRule.NONE : rule, items);
+	}
+
+	/**
+	 * 예약 취소 일괄 환불 (RSV-002). <b>예약 취소 트랜잭션 안에서 ReservationService 가 부른다.</b>
+	 * 결제 상태는 Payment 메서드({@code requestRefund}·{@code refund})로만 바뀝니다.
+	 *
+	 * <p>그 예약의 결제 완료(COMPLETED) 결제마다 환불 요청(요청일 = 오늘) → 환불 처리를 차례로 적용합니다.
+	 * 계산은 {@link #refund} 와 같고, 결과는 {@link #previewCancelRefund} 와 같은 모양입니다.
+	 * 다른 상태의 결제는 건드리지 않습니다. 결제가 없으면 규정 NONE, 금액 0. 예약이 없으면 BusinessException.
+	 */
+	@Transactional
+	public CancelRefundResponse refundForCancellation(Long reservationId) {
+		LocalDate checkInDate = findCheckInDateOrThrow(reservationId);
+		LocalDate today = LocalDate.now();
+		List<Payment> payments = paymentRepository.findByReservationIdAndPaymentStatus(reservationId, PaymentStatus.COMPLETED);
+		for (Payment payment : payments) {
+			payment.requestRefund(today);
+			applyRefund(payment, checkInDate);
+		}
+		List<CancelRefundResponse.Item> items = payments.stream()
+				.map(p -> new CancelRefundResponse.Item(p.getId(), p.getPaymentAmount(), p.getRefundAmount()))
+				.toList();
+		PaymentRefundRule rule = payments.isEmpty() ? PaymentRefundRule.NONE : payments.get(0).getRefundRuleApplied();
+		return CancelRefundResponse.of(reservationId, checkInDate, rule, items);
+	}
+
+	/** 환불 요청일·체크인일로 규정을 정해 환불을 적용합니다. {@link #refund}·{@link #refundForCancellation} 공통. */
+	private void applyRefund(Payment payment, LocalDate checkInDate) {
+		PaymentRefundRule rule = refundRule(payment.getRefundRequestDate(), checkInDate);
+		payment.refund(rule, refundAmount(rule, payment.getPaymentAmount()));
+	}
+
+	private static PaymentRefundRule refundRule(LocalDate requestDate, LocalDate checkInDate) {
+		return isFullRefund(requestDate, checkInDate) ? PaymentRefundRule.FULL : PaymentRefundRule.PARTIAL;
+	}
+
+	private static BigDecimal refundAmount(PaymentRefundRule rule, BigDecimal paymentAmount) {
+		return rule == PaymentRefundRule.FULL ? paymentAmount : partialAmount(paymentAmount);
+	}
+
+	private LocalDate findCheckInDateOrThrow(Long reservationId) {
+		return reservationRepository.findById(reservationId)
+				.map(Reservation::getCheckInDate)
+				.orElseThrow(() -> new BusinessException("예약을 찾을 수 없습니다."));
 	}
 
 	/** 환불 거절 (PAY-001). 환불 요청 상태를 결제 완료로 되돌리고, 사유를 error_note 에 남깁니다. */
