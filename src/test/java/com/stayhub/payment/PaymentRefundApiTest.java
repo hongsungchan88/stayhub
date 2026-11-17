@@ -1,5 +1,6 @@
 package com.stayhub.payment;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -63,6 +64,7 @@ class PaymentRefundApiTest {
 	private PaymentService paymentService;
 
 	private MockHttpSession session;
+	private Long reservationId;
 	private Long paymentId;
 
 	@BeforeEach
@@ -80,7 +82,7 @@ class PaymentRefundApiTest {
 		Long roomId = roomRepository.save(Room.create(
 				PropertyScope.DEFAULT_PROPERTY_ID, "REFUNDAPI-101", "STANDARD", new BigDecimal("100000.00"), 2)).getId();
 		LocalDate checkIn = LocalDate.now().plusDays(10);
-		Long reservationId = reservationService.create(
+		reservationId = reservationService.create(
 				null, "환불테스트", "010-0000-0000", roomId, null, checkIn, checkIn.plusDays(1), null).getId();
 		paymentId = paymentService.create(new PaymentCreateRequest(
 				reservationId, channelId, "사전 결제", new BigDecimal("100000.00"), null)).id();
@@ -135,5 +137,31 @@ class PaymentRefundApiTest {
 				.andExpect(jsonPath("$.data.paymentStatus").value("COMPLETED"))
 				.andExpect(jsonPath("$.data.refundRuleApplied").value("NONE"))
 				.andExpect(jsonPath("$.data.errorNote").value("규정 외 요청"));
+	}
+
+	@Test
+	@DisplayName("환불 미리보기: 로그인했으면 200 과 예약 취소 환불 금액")
+	void refundPreview() throws Exception {
+		mockMvc.perform(get("/api/payments/refund-preview").param("reservationId", reservationId.toString()).session(session))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.reservationId").value(reservationId))
+				.andExpect(jsonPath("$.data.refundRule").value("FULL"))
+				.andExpect(jsonPath("$.data.refundTotal").value(100000.00))
+				.andExpect(jsonPath("$.data.payments[0].paymentId").value(paymentId));
+	}
+
+	@Test
+	@DisplayName("환불 미리보기: 로그인 없이 부르면 401")
+	void refundPreviewWithoutLoginIs401() throws Exception {
+		mockMvc.perform(get("/api/payments/refund-preview").param("reservationId", reservationId.toString()))
+				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	@DisplayName("환불 미리보기: 없는 예약이면 400 과 안내 문구")
+	void refundPreviewMissingReservationIs400() throws Exception {
+		mockMvc.perform(get("/api/payments/refund-preview").param("reservationId", "-1").session(session))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("예약을 찾을 수 없습니다."));
 	}
 }

@@ -2,6 +2,7 @@ package com.stayhub.payment.controller;
 
 import com.stayhub.common.ApiResponse;
 import com.stayhub.common.PageResponse;
+import com.stayhub.payment.dto.CancelRefundResponse;
 import com.stayhub.payment.dto.PaymentCreateRequest;
 import com.stayhub.payment.dto.PaymentRefundRejectRequest;
 import com.stayhub.payment.dto.PaymentResponse;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
  * GET    /api/payments?page=0   목록 (page 는 생략 가능)
  * GET    /api/payments/{id}     상세
  * GET    /api/payments/{id}/total  결제 합계 (결제 금액 + 합산된 추가 요금)
+ * GET    /api/payments/refund-preview?reservationId=  예약 취소 환불 미리보기 (RSV-002, 취소 팝업 SCR-RSV-04)
  * POST   /api/payments          등록
  * PUT    /api/payments/{id}     수정
  * PUT    /api/payments/{id}/refund-request    환불 요청 (본문 없음, 요청일 = 오늘)
@@ -50,6 +52,12 @@ public class PaymentController {
 			@RequestParam(defaultValue = "0") int page
 	) {
 		return ApiResponse.success(paymentService.getList(page));
+	}
+
+	/** 고정 경로라 {@code /{id}} 보다 먼저 매칭됩니다. */
+	@GetMapping("/refund-preview")
+	public ApiResponse<CancelRefundResponse> previewCancelRefund(@RequestParam Long reservationId) {
+		return ApiResponse.success(paymentService.previewCancelRefund(reservationId));
 	}
 
 	@GetMapping("/{id}")
