@@ -47,8 +47,7 @@ public class PaymentService {
 	static final int FULL_REFUND_DAYS_BEFORE = 3;
 
 	/**
-	 * 부분 환불 비율. <b>임시값(50%)</b> — 정의서에 "이후 부분 환불 규정 적용" 만 있고 비율이 없어 총괄 확인 대기 중입니다.
-	 * 비율이 정해지면 이 값만 바꾸세요.
+	 * 부분 환불 비율 50% (11/10 총괄 확정). 체크인 3일 전이 지난 환불 요청에 적용합니다.
 	 */
 	static final BigDecimal PARTIAL_REFUND_RATE = new BigDecimal("0.50");
 
