@@ -8,6 +8,7 @@
  *   <li>{@code PaymentController} — 결제/환불 API 8개 (목록·상세·합계·등록·수정·환불 요청·환불 처리·환불 거절)</li>
  *   <li>{@code AdditionalChargeController} — 추가 요금 API 4개 (목록·상세·등록·수정)</li>
  *   <li>{@code TaxInvoiceController} — 세금 계산서/현금 영수증 API 5개 (목록·상세·등록·수정·발행 상태 변경)</li>
+ *   <li>{@code ChannelCommissionController} — 채널 수수료율 수정 API 1개 (PAY-003, 호스트만)</li>
  * </ul>
  */
 package com.stayhub.payment.controller;

@@ -16,6 +16,7 @@
  *   <li>{@code TaxInvoiceCreateRequest} — 세금 계산서/현금 영수증 등록 요청</li>
  *   <li>{@code TaxInvoiceUpdateRequest} — 세금 계산서/현금 영수증 수정 요청</li>
  *   <li>{@code TaxInvoiceStatusChangeRequest} — 발행 상태 변경 요청 (PAY-004)</li>
+ *   <li>{@code ChannelCommissionUpdateRequest} — 채널 수수료율 수정 요청 (PAY-003)</li>
  *   <li>{@code TaxInvoiceResponse} — 세금 계산서/현금 영수증 목록·상세·등록·수정·발행 상태 변경 응답</li>
  * </ul>
  */
