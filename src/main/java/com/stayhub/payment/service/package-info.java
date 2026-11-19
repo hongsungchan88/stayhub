@@ -8,6 +8,7 @@
  *   <li>{@code PaymentService} — 결제/환불 업무 로직과 트랜잭션. 결제 합계(PAY-002), 환불 규정 적용(PAY-001), 채널 수수료·실매출 계산(PAY-003) 포함</li>
  *   <li>{@code AdditionalChargeService} — 추가 요금 업무 로직과 트랜잭션</li>
  *   <li>{@code TaxInvoiceService} — 세금 계산서/현금 영수증 업무 로직과 트랜잭션</li>
+ *   <li>{@code ChannelCommissionService} — 채널 수수료율·기본 수수료율 수정 (PAY-003)</li>
  * </ul>
  */
 package com.stayhub.payment.service;

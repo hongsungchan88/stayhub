@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<!--/*
+  채널 수수료 설정 SCR-PAY-03 (/admin/channel-commissions) — 채널 목록 + 수수료율 수정 팝업. 호스트 전용 메뉴.
+  가이드북 목록(guidebooks/list.html)과 영수증 / 세금계산서(tax-invoices/list.html)의 팝업을 따라 만들었습니다.
+
+  이 화면이 하는 일
+    GET /api/channels 로 채널을 모두 불러와 표로 그립니다(채널 수가 적어 목록 API 가 페이지를 나누지 않음).
+      등록 채널은 수수료율, 미등록 채널은 기본 수수료율로 계산하므로 "적용 수수료율" 칸에 지금 쓰이는 값을 보여 줍니다.
+    [수정] → 팝업에 지금 값을 채워 → PUT /api/channel-commissions/{id} (PAY-003)
+      바꾼 비율은 그 뒤에 등록·수정하는 결제부터 적용됩니다. 이미 저장된 결제의 수수료는 그대로입니다.
+
+  가이드북과 다른 점
+    - 등록·삭제 버튼 없음 — 채널 등록은 이 화면 범위가 아님(담당 확인 중)
+    - 검색 조건·페이지 번호 없음 — 목록 API 가 전체를 한 번에 돌려줌
+    - 채널 이름·등록 여부는 보여 주기만 하고 바꾸지 않음
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{admin/layout :: layout('채널 수수료 설정', ~{::section})}">
+<body>
+<section class="content">
+    <div class="container-fluid">
+        <div class="card">
+            <div class="card-header">
+                <span class="text-muted">등록 채널은 수수료율, 미등록 채널은 기본 수수료율로 계산합니다. 바꾼 비율은 그 뒤에 등록·수정하는 결제부터 적용됩니다.</span>
+            </div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                    <tr>
+                        <th>채널명</th>
+                        <th style="width: 100px">등록 여부</th>
+                        <th style="width: 110px">수수료율</th>
+                        <th style="width: 120px">기본 수수료율</th>
+                        <th style="width: 120px">적용 수수료율</th>
+                        <th style="width: 150px">수정 일시</th>
+                        <th style="width: 80px">관리</th>
+                    </tr>
+                    </thead>
+                    <tbody id="rows"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!--/* 수수료율 수정 팝업. name = ChannelCommissionUpdateRequest 필드명 */-->
+    <div class="modal fade" id="commissionModal" tabindex="-1" role="dialog" aria-labelledby="commissionModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <form id="commissionForm" novalidate>
+                    <div class="modal-header">
+                        <h2 class="modal-title h5" id="commissionModalTitle">수수료율 수정</h2>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none" data-form-error></div>
+                        <p class="mb-3" id="channelInfo"></p>
+                        <div class="form-group">
+                            <label for="commissionRate" class="required">수수료율(%)</label>
+                            <input type="number" id="commissionRate" name="commissionRate" class="form-control"
+                                   min="0" max="100" step="0.01">
+                            <small class="form-text text-muted">등록 채널에 적용합니다</small>
+                        </div>
+                        <div class="form-group mb-0">
+                            <label for="defaultCommissionRate" class="required">기본 수수료율(%)</label>
+                            <input type="number" id="defaultCommissionRate" name="defaultCommissionRate" class="form-control"
+                                   min="0" max="100" step="0.01">
+                            <small class="form-text text-muted">미등록 채널에 적용합니다</small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">취소</button>
+                        <button type="submit" class="btn btn-primary">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+      const API_URL = '/api/channels';
+      const UPDATE_URL = '/api/channel-commissions';
+
+      const form = document.getElementById('commissionForm');
+      let channelsById = {}; // 버튼에는 id 만 넣고 나머지는 여기서 꺼냅니다
+      let editingId = null;
+
+      // 12.5 → "12.50%"
+      function rate(value) {
+        return `${Number(value).toFixed(2)}%`;
+      }
+
+      function registeredBadge(registered) {
+        return registered
+          ? '<span class="badge badge-success">등록</span>'
+          : '<span class="badge badge-secondary">미등록</span>';
+      }
+
+      async function load() {
+        try {
+          const channels = await api('GET', API_URL);
+          channelsById = Object.fromEntries(channels.map(c => [c.id, c]));
+          renderRows(document.getElementById('rows'), channels, c => `
+            <tr>
+              <td>${esc(c.channelName)}</td>
+              <td>${registeredBadge(c.isRegistered)}</td>
+              <td>${rate(c.commissionRate)}</td>
+              <td>${rate(c.defaultCommissionRate)}</td>
+              <td><strong>${rate(c.isRegistered ? c.commissionRate : c.defaultCommissionRate)}</strong></td>
+              <td>${formatDateTime(c.updatedAt)}</td>
+              <td><button type="button" class="btn btn-outline-secondary btn-xs" onclick="openCommissionModal(${c.id})">수정</button></td>
+            </tr>`);
+        } catch (error) {
+          showError(error);
+        }
+      }
+
+      function openCommissionModal(id) {
+        const channel = channelsById[id];
+        editingId = id;
+        clearFormError(form);
+        form.reset();
+        document.getElementById('channelInfo').innerHTML =
+          `${esc(channel.channelName)} ${registeredBadge(channel.isRegistered)}`;
+        fillForm(form, channel);
+        $('#commissionModal').modal('show');
+      }
+
+      form.addEventListener('submit', async e => {
+        e.preventDefault();
+        clearFormError(form);
+        try {
+          await api('PUT', `${UPDATE_URL}/${editingId}`, formToJson(form));
+          $('#commissionModal').modal('hide');
+          toast('저장되었습니다.');
+          load();
+        } catch (error) {
+          showFormError(form, error);
+        }
+      });
+
+      load();
+    </script>
+</section>
+</body>
+</html>
