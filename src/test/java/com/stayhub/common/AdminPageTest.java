@@ -119,6 +119,51 @@ class AdminPageTest {
 				.andExpect(content().string(Matchers.containsString("접근 권한이 없습니다.")));
 	}
 
+	@Test
+	@DisplayName("메뉴 역할이 없으면 403 — FRONT /admin/users, CLEANING /admin/payments, STAFF /admin/rooms")
+	void menuWithoutRoleIs403() throws Exception {
+		mockMvc.perform(get("/admin/users").session(sessionOf(UserRole.FRONT)))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get("/admin/payments").session(sessionOf(UserRole.CLEANING)))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get("/admin/rooms").session(sessionOf(UserRole.STAFF)))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	@DisplayName("메뉴 아래 주소는 그 메뉴의 역할을 따른다 — FRONT /admin/reservations/1 통과")
+	void subPathFollowsMenuRole() throws Exception {
+		//화면이 있으면 200, 없으면 404일 수 있어서 "403이 아님"만 확인
+		mockMvc.perform(get("/admin/reservations/1").session(sessionOf(UserRole.FRONT)))
+				.andExpect(status().is(Matchers.not(403)));
+	}
+
+	@Test
+	@DisplayName("어느 메뉴에도 없는 /admin 주소는 HOST 만 — FRONT 는 403")
+	void unknownAdminUrlIs403() throws Exception {
+		mockMvc.perform(get("/admin/no-such-page").session(sessionOf(UserRole.FRONT)))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	@DisplayName("HOST는 어떤 /admin 주소도 막히지 않는다")
+	void hostPassesEverywhere() throws Exception {
+		MockHttpSession host = sessionOf(UserRole.HOST);
+		for (String url : List.of("/admin/users", "/admin/check-in-out", "/admin/rooms/1", "/admin/no-such-page")) {
+			mockMvc.perform(get(url).session(host))
+					.andExpect(status().is(Matchers.not(403)));
+		}
+	}
+
+	@Test
+	@DisplayName("/admin(대시보드)은 모든 역할 200 - 403 화면의 '대시보드로' 버튼이 가는 곳")
+	void dashboardOpenToAllRoles() throws Exception {
+		for (UserRole role : UserRole.values()) {
+			mockMvc.perform(get("/admin").session(sessionOf(role)))
+					.andExpect(status().isOk());
+		}
+	}
+
 	/** 화면에 그려진 메뉴 목록(그룹을 펼쳐서). */
 	@SuppressWarnings("unchecked")
 	private List<AdminMenu> menusOf(UserRole role) throws Exception {
