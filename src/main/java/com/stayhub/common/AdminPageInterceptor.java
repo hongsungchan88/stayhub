@@ -15,6 +15,7 @@ import org.springframework.web.servlet.ModelAndView;
  * <ul>
  *   <li>화면을 그리기 전 — 세션에 {@link LoginUser} 가 없으면 {@code /login?expired} 로 보냅니다.
  *       로그인 화면이 "세션이 만료되어 다시 로그인해 주세요." 를 띄웁니다(정책정의서 "세션 만료")</li>
+ *       <li>그다음 — 역할이 볼 수 없는 주소면 {@link AdminMenu#canAccess} 에 따라 403 (리다이렉트 아님, 주소 그대로)</li>
  *   <li>화면을 그릴 때 — 레이아웃이 쓰는 {@code loginUser}(상단 이름·역할), {@code menuGroups}(좌측 메뉴),
  *       {@code currentUri}(지금 메뉴 강조)를 넣어 줍니다. 그래서 화면 컨트롤러는 화면 이름만 돌려주면 됩니다</li>
  * </ul>
@@ -30,8 +31,14 @@ public class AdminPageInterceptor implements HandlerInterceptor {
 	@Override
 	public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
 			throws IOException {
-		if (loginUser(request) == null) {
+		LoginUser loginUser = loginUser(request);
+		if (loginUser == null) {
 			response.sendRedirect(request.getContextPath() + "/login?expired");
+			return false;
+		}
+
+		if (!AdminMenu.canAccess(loginUser.role(), request.getRequestURI())) {
+			response.sendError(HttpServletResponse.SC_FORBIDDEN);
 			return false;
 		}
 		return true;

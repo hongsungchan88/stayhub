@@ -7,6 +7,7 @@ import static com.stayhub.account.entity.UserRole.STAFF;
 
 import com.stayhub.account.entity.UserRole;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,11 +30,11 @@ import java.util.stream.Collectors;
  * <br>대부분 없습니다. 내 화면이 이미 여기 있는지 화면 ID 로 찾아보고, 주소만 확인하세요.
  * 주소를 바꾸면 내 컨트롤러의 {@code @GetMapping} 도 같은 값이어야 합니다.
  * 메뉴를 새로 넣거나 역할을 바꾸려면 사이트맵을 먼저 고쳐야 하니 총괄과 상의하세요.
- * 여기서 메뉴를 숨겨도 주소를 직접 치면 열립니다. 주소 차단(403)은 ACC-005 에서 추가합니다.
+ * 볼 수 없는 메뉴의 주소를 직접 치면 {@link #canAccess}에 따라 403 화면이 뜹니다(ACC-005).
  */
 public enum AdminMenu {
 
-	// STAFF(관리 스태프)가 볼 메뉴는 ACC-005 에서 정합니다. 지금은 사이트맵대로 대시보드만.
+	// STAFF(관리 스태프)는 사이트맵대로 대시보드만 (11/10 결정). 데이터 내보내기(SCR-STA-02)는 대시보드 안 팝업이라 메뉴 없음.
 	DASHBOARD("대시보드", "SCR-STA-01", "대시보드", "/admin", HOST, STAFF),
 
 	RESERVATION_LIST("예약관리", "SCR-RSV-01", "예약 목록 / 통합 검색", "/admin/reservations", HOST, FRONT),
@@ -85,6 +86,28 @@ public enum AdminMenu {
 	/** 지금 보고 있는 주소가 이 메뉴(또는 그 아래 화면)이면 true. 메뉴를 강조 표시할 때 씁니다. */
 	public boolean isActive(String requestUri) {
 		return requestUri.equals(url) || (!this.equals(DASHBOARD) && requestUri.startsWith(url + "/"));
+	}
+
+	/**
+	 * 이 역할이 이 주소를 열 수 있으면 true. {@link AdminPageInterceptor} 가 화면을 그리기 전에 부릅니다
+	 * (ACC-005, 총괄 결정 2026-11-20).
+	 * <ul>
+	 *   <li>HOST 는 항상 true (정책정의서 "호스트")</li>
+	 *   <li>/admin(대시보드)은 모든 역할 true — 403 화면의 "대시보드로" 버튼이 가는 곳이라 막지 않습니다</li>
+	 *   <li>메뉴 주소와 그 아래 주소(/admin/reservations/5 등)는 그 메뉴의 역할을 따릅니다.
+	 *       여러 메뉴에 걸리면(/admin/reservations/new) 가장 긴 주소의 메뉴 기준</li>
+	 *   <li>어느 메뉴에도 안 걸리는 주소(오타 등)는 HOST 만 — 모르는 주소는 막는 게 기본</li>
+	 * </ul>
+	 */
+	public static boolean canAccess(UserRole role, String requestUri) {
+		if (role == HOST || requestUri.equals(DASHBOARD.url)) {
+			return true;
+		}
+		return Arrays.stream(values())
+				.filter(menu -> menu != DASHBOARD && menu.isActive(requestUri))
+				.max(Comparator.comparingInt(menu -> menu.url.length()))
+				.map(menu -> menu.roles.contains(role))
+				.orElse(false);
 	}
 
 	public String getScreenId() {
