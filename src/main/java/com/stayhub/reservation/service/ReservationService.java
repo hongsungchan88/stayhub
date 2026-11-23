@@ -27,6 +27,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.stayhub.reservation.dto.ReservationUpdateRequest;
+import com.stayhub.payment.service.PaymentService;
 
 /**
  * 예약 생성·상태 변경·목록 조회·통합 검색.
@@ -45,15 +46,18 @@ public class ReservationService {
 	private final ReservationRepository reservationRepository;
 	private final RoomRepository roomRepository;
 	private final ChannelRepository channelRepository;
+	private final PaymentService paymentService;
 
 	public ReservationService(
 			ReservationRepository reservationRepository,
 			RoomRepository roomRepository,
-			ChannelRepository channelRepository
+			ChannelRepository channelRepository,
+			PaymentService paymentService
 	) {
 		this.reservationRepository = reservationRepository;
 		this.roomRepository = roomRepository;
 		this.channelRepository = channelRepository;
+		this.paymentService = paymentService;
 	}
 
 	/**
@@ -75,6 +79,11 @@ public class ReservationService {
 				|| !checkOutDate.isAfter(checkInDate)) {
 			throw new BusinessException(
 					"체크아웃 날짜는 체크인 날짜보다 뒤여야 합니다.");
+		}
+
+		if (checkInDate.isBefore(LocalDate.now())) {
+			throw new BusinessException(
+					"checkInDate: 체크인 날짜는 오늘 또는 이후여야 합니다.");
 		}
 
 		// 총괄의 동시 예약 차단: 겹침 검사 전에 객실의 낙관적 락을 잡습니다.
@@ -171,11 +180,23 @@ public class ReservationService {
 					"예약 확정 상태에서만 날짜와 객실을 변경할 수 있습니다.");
 		}
 
+		LocalDate today = LocalDate.now();
+
+		if (!reservation.getCheckInDate().isAfter(today)) {
+			throw new BusinessException(
+					"체크인 당일 또는 지난 예약은 변경할 수 없습니다.");
+		}
+
 		if (request.checkInDate() == null
 				|| request.checkOutDate() == null
 				|| !request.checkOutDate().isAfter(request.checkInDate())) {
 			throw new BusinessException(
 					"checkOutDate: 체크아웃 날짜는 체크인 날짜보다 뒤여야 합니다.");
+		}
+
+		if (request.checkInDate().isBefore(today)) {
+			throw new BusinessException(
+					"checkInDate: 변경할 체크인 날짜는 오늘 또는 이후여야 합니다.");
 		}
 
 		if (request.roomId() == null) {
@@ -260,7 +281,36 @@ public class ReservationService {
 			};
 		}
 
-		// 페이지에 있는 객실·채널의 ID를 모아 한 번씩 조회합니다.
+		return toPageResponse(reservations);
+	}
+
+	/** 수동 노쇼 처리 대상 목록. 한 페이지에 20건입니다. */
+	public PageResponse<ReservationResponse> getNoShowCandidates(int page) {
+		if (page < 0) {
+			throw new BusinessException("페이지 번호는 0 이상이어야 합니다.");
+		}
+
+		PageRequest pageable = PageRequest.of(
+				page,
+				PageResponse.DEFAULT_PAGE_SIZE,
+				Sort.by(Sort.Direction.ASC, "checkInDate")
+						.and(Sort.by(Sort.Direction.ASC, "id"))
+		);
+
+		Page<Reservation> reservations =
+				reservationRepository.findByStatusAndCheckInDateLessThanEqual(
+						ReservationStatus.CONFIRMED,
+						LocalDate.now(),
+						pageable
+				);
+
+		return toPageResponse(reservations);
+	}
+
+	/** 페이지에 있는 객실·채널을 모아서 조회하고 응답으로 변환합니다. */
+	private PageResponse<ReservationResponse> toPageResponse(
+			Page<Reservation> reservations
+	) {
 		List<Long> roomIds = reservations.getContent().stream()
 				.map(Reservation::getRoomId)
 				.distinct()
@@ -322,19 +372,90 @@ public class ReservationService {
 		return reservationRepository.findByChannelIdIn(ids, pageable);
 	}
 
+	/** 예약 취소. 사유는 선택 입력이며 최대 255자입니다. */
+	@Transactional
+	public ReservationResponse cancel(Long id, String reason) {
+		if (reason != null && reason.length() > 255) {
+			throw new BusinessException(
+					"cancelReason: 취소 사유는 255자 이내로 입력해 주세요.");
+		}
+
+		String cancelReason = reason == null ? null : reason.trim();
+
+		if (cancelReason != null && cancelReason.isEmpty()) {
+			cancelReason = null;
+		}
+
+		Reservation reservation = changeStatus(
+				id, ReservationStatus.CANCELLED);
+
+		reservation.recordCancelReason(cancelReason);
+		reservationRepository.flush();
+
+		return getDetail(id);
+	}
+
+	/** 프런트 직원이 선택한 예약을 수동으로 노쇼 처리합니다. */
+	@Transactional
+	public ReservationResponse markNoShow(Long id) {
+		Reservation reservation = changeStatus(
+				id, ReservationStatus.NOSHOW);
+
+		reservationRepository.flush();
+
+		return getDetail(reservation.getId());
+	}
+
 	/** 총괄의 상태 전이 규칙을 사용합니다. 업무별 추가 연동은 이후 구현합니다. */
+	/**
+	 * 예약 상태 변경의 공통 진입점.
+	 * 취소는 환불까지 같은 트랜잭션에서 처리합니다.
+	 */
 	@Transactional
 	public Reservation changeStatus(Long id, ReservationStatus newStatus) {
 		Reservation reservation = reservationRepository.findById(id)
-				.orElseThrow(() -> new BusinessException("예약을 찾을 수 없습니다."));
+				.orElseThrow(() ->
+						new BusinessException("예약을 찾을 수 없습니다."));
+
+		if (newStatus == null) {
+			throw new BusinessException("변경할 예약 상태를 선택해 주세요.");
+		}
+
+		LocalDate today = LocalDate.now();
+
+		if (newStatus == ReservationStatus.CANCELLED) {
+			if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
+				throw new BusinessException(
+						"예약 확정 상태에서만 취소할 수 있습니다.");
+			}
+
+			if (!reservation.getCheckInDate().isAfter(today)) {
+				throw new BusinessException(
+						"체크인 당일 또는 지난 예약은 취소할 수 없습니다.");
+			}
+		}
+
+		if (newStatus == ReservationStatus.NOSHOW) {
+			if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
+				throw new BusinessException(
+						"예약 확정 상태에서만 노쇼 처리할 수 있습니다.");
+			}
+
+			if (reservation.getCheckInDate().isAfter(today)) {
+				throw new BusinessException(
+						"체크인 예정일이 오늘이거나 지난 예약만 노쇼 처리할 수 있습니다.");
+			}
+		}
 
 		reservation.changeStatus(newStatus);
 
-		// 이후 연결할 기능:
-		// CANCELLED: 취소 사유·취소 수수료·환불
-		// NOSHOW: 예정일 미입실 처리·객실 재오픈
-		// CHECKED_IN: 키 번호·객실 상태 변경
-		// CHECKED_OUT: 미정산 추가 요금 확인·객실 상태 변경
+		if (newStatus == ReservationStatus.CANCELLED) {
+			paymentService.refundForCancellation(id);
+		}
+
+		// CHECKED_IN: 키 번호·객실 상태 연결은 이후 구현
+		// CHECKED_OUT: 미정산 추가 요금 확인·객실 상태 연결은 이후 구현
+
 		return reservation;
 	}
 

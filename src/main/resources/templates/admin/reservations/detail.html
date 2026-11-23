@@ -60,6 +60,74 @@
                 <a th:href="@{/admin/reservations}"
                    class="btn btn-secondary">목록으로</a>
                 <a id="editLink" class="btn btn-primary d-none">예약 변경</a>
+                <button type="button" id="openCancelButton"
+                        class="btn btn-danger d-none"
+                        data-toggle="modal" data-target="#cancelModal">
+                    예약 취소
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="cancelModal" tabindex="-1"
+         aria-labelledby="cancelModalTitle" aria-hidden="true"
+         data-backdrop="static" data-keyboard="false">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form id="cancelForm" novalidate>
+                    <div class="modal-header">
+                        <h2 class="modal-title h5" id="cancelModalTitle">
+                            예약 취소
+                        </h2>
+                        <button type="button" class="close cancel-close"
+                                data-dismiss="modal" aria-label="닫기">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none"
+                             data-form-error></div>
+
+                        <p>예약 취소는 체크인 전날까지 가능합니다.</p>
+                        <p id="refundLoading" role="status">
+                            환불 예정 금액을 조회하는 중입니다.
+                        </p>
+
+                        <dl class="row d-none" id="refundDetails">
+                            <dt class="col-sm-5">환불 규정</dt>
+                            <dd class="col-sm-7" id="refundRule"></dd>
+
+                            <dt class="col-sm-5">환불 대상 결제 합계</dt>
+                            <dd class="col-sm-7" id="paymentTotal"></dd>
+
+                            <dt class="col-sm-5">환불 예정 합계</dt>
+                            <dd class="col-sm-7" id="refundTotal"></dd>
+                        </dl>
+
+                        <div class="form-group">
+                            <label for="cancelReason">취소 사유 (선택)</label>
+                            <textarea id="cancelReason" name="cancelReason"
+                                      class="form-control" rows="3"
+                                      maxlength="255"></textarea>
+                        </div>
+
+                        <p class="text-danger mb-0">
+                            취소하면 되돌릴 수 없습니다.
+                            환불액은 실제 취소 시점의 기준으로 계산됩니다.
+                        </p>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button"
+                                class="btn btn-secondary cancel-close"
+                                data-dismiss="modal">닫기</button>
+                        <button type="submit" id="confirmCancelButton"
+                                class="btn btn-danger" disabled>
+                            예약 취소 확정
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -73,11 +141,31 @@
             CHECKED_OUT: '체크아웃 완료'
         };
 
+        const REFUND_LABELS = {
+            FULL: '전액 환불',
+            PARTIAL: '50% 환불',
+            NONE: '환불 대상 결제 없음'
+        };
+
+        const reservationId = location.pathname
+            .match(/\/admin\/reservations\/(\d+)$/)?.[1];
+
+        const cancelForm = document.getElementById('cancelForm');
+        const openCancelButton = document.getElementById('openCancelButton');
+        const confirmCancelButton =
+            document.getElementById('confirmCancelButton');
+
+        let previewReady = false;
+        let cancelling = false;
+
+        function money(value) {
+            return Number(value).toLocaleString('ko-KR', {
+                maximumFractionDigits: 2
+            }) + '원';
+        }
+
         async function loadDetail() {
             try {
-                const reservationId = location.pathname
-                    .match(/\/admin\/reservations\/(\d+)$/)?.[1];
-
                 if (!reservationId) {
                     throw new Error('예약 주소가 올바르지 않습니다.');
                 }
@@ -90,7 +178,8 @@
                     'reservationCode', 'guestName', 'guestPhone',
                     'roomNumber', 'channelName'
                 ]) {
-                    document.getElementById(field).textContent = item[field] ?? '-';
+                    document.getElementById(field).textContent =
+                        item[field] ?? '-';
                 }
 
                 document.getElementById('reservationStatus').textContent =
@@ -108,10 +197,13 @@
                     formatDateTime(item.updatedAt);
 
                 document.getElementById('details').classList.remove('d-none');
+
                 if (item.status === 'CONFIRMED') {
                     const editLink = document.getElementById('editLink');
-                    editLink.href = `/admin/reservations/${reservationId}/edit`;
+                    editLink.href =
+                        `/admin/reservations/${reservationId}/edit`;
                     editLink.classList.remove('d-none');
+                    openCancelButton.classList.remove('d-none');
                 }
             } catch (error) {
                 if (!error.shown) {
@@ -123,6 +215,83 @@
                 document.getElementById('loading').classList.add('d-none');
             }
         }
+
+        openCancelButton.addEventListener('click', async () => {
+            if (cancelling) return;
+
+            previewReady = false;
+            confirmCancelButton.disabled = true;
+
+            cancelForm.reset();
+            clearFormError(cancelForm);
+
+            document.getElementById('refundLoading')
+                .classList.remove('d-none');
+            document.getElementById('refundDetails')
+                .classList.add('d-none');
+
+            try {
+                const params = new URLSearchParams({ reservationId });
+                const preview = await api(
+                    'GET', `/api/payments/refund-preview?${params}`
+                );
+
+                document.getElementById('refundRule').textContent =
+                    REFUND_LABELS[preview.refundRule] || preview.refundRule;
+                document.getElementById('paymentTotal').textContent =
+                    money(preview.paymentTotal);
+                document.getElementById('refundTotal').textContent =
+                    money(preview.refundTotal);
+
+                document.getElementById('refundDetails')
+                    .classList.remove('d-none');
+
+                previewReady = true;
+                confirmCancelButton.disabled = false;
+            } catch (error) {
+                showFormError(cancelForm, error);
+            } finally {
+                document.getElementById('refundLoading')
+                    .classList.add('d-none');
+            }
+        });
+
+        cancelForm.addEventListener('submit', async e => {
+            e.preventDefault();
+            if (!previewReady || cancelling) return;
+
+            clearFormError(cancelForm);
+            cancelling = true;
+            confirmCancelButton.disabled = true;
+            let saved = false;
+
+            document.querySelectorAll('.cancel-close').forEach(button => {
+                button.disabled = true;
+            });
+
+            try {
+                await api(
+                    'POST',
+                    `/api/reservations/${reservationId}/cancel`,
+                    formToJson(cancelForm)
+                );
+
+                saved = true;
+                location.reload();
+            } catch (error) {
+                showFormError(cancelForm, error);
+            } finally {
+                if (!saved) {
+                    cancelling = false;
+                    confirmCancelButton.disabled = !previewReady;
+
+                    document.querySelectorAll('.cancel-close')
+                        .forEach(button => {
+                            button.disabled = false;
+                        });
+                }
+            }
+        });
 
         loadDetail();
     </script>
