@@ -40,4 +40,10 @@ public class Channel extends BaseEntity {
     @Column(name = "default_commission_rate", nullable = false,
             precision = 5, scale = 2)
     private BigDecimal defaultCommissionRate = new BigDecimal("10.00");
+
+    /** 수수료율과 기본 수수료율을 바꿉니다 (PAY-003, 채널 수수료 설정 SCR-PAY-03). 값 검사는 요청 DTO 에서 합니다. */
+    public void changeCommissionRates(BigDecimal commissionRate, BigDecimal defaultCommissionRate) {
+        this.commissionRate = commissionRate;
+        this.defaultCommissionRate = defaultCommissionRate;
+    }
 }
