@@ -130,11 +130,15 @@ public class HousekeepingTaskService {
 	 * 체크아웃 후 처리 (ROM-003, RSV-004). 객실을 투숙 중(OCCUPIED) → 청소 필요(CLEANING_NEEDED)로 바꾸고,
 	 * 그 객실의 청소 작업을 배정됨(SCHEDULED) 상태로 하나 만듭니다.
 	 *
+	 * <p>그 객실에 아직 시작하지 않은 청소 작업(CLEANING, SCHEDULED)이 이미 있으면 새로 만들지 않고,
+	 * 그 작업(배정 일시가 가장 이른 것)에 실제 체크아웃 시각만 적어 돌려줍니다. 미리 정한 담당 스태프와 배정 일시는 그대로 둡니다.
+	 * 청소 스케줄 화면에서 체크아웃 예정 객실의 청소를 미리 배정해 둔 경우, 같은 객실에 청소 작업이 두 개 생기지 않게 하려는 것입니다.
+	 *
 	 * <p>{@code ReservationService.changeStatus}의 CHECKED_OUT 처리에서, 미정산 확인
 	 * ({@code AdditionalChargeService.checkAllSettled})을 통과한 뒤 부릅니다.
 	 * 객실 상태 변경과 작업 등록은 부른 쪽 트랜잭션에 함께 묶이므로 셋 중 하나라도 실패하면 모두 되돌려집니다.
 	 *
-	 * <p>작업의 체크아웃 시각과 배정 일시는 둘 다 {@code checkoutTime}으로 넣습니다.
+	 * <p>새로 만들 때는 작업의 체크아웃 시각과 배정 일시를 둘 다 {@code checkoutTime}으로 넣습니다.
 	 * 담당 스태프는 비워 둡니다(assigned_staff_id NULL). 스태프 근무 현황을 읽을 방법이 아직 없어서,
 	 * 청소 스케줄 화면에서 [재배정]으로 정합니다. 스태프 자동 배정은 직원 목록 API가 생긴 뒤 이 메서드에 더합니다.
 	 *
@@ -148,6 +152,18 @@ public class HousekeepingTaskService {
 		checkRoomStatus(roomId, RoomStatus.OCCUPIED, "객실이 투숙 중 상태가 아니라 체크아웃 청소를 배정할 수 없습니다.");
 		roomService.changeStatus(roomId, new RoomStatusChangeRequest(
 				RoomStatus.OCCUPIED, RoomStatus.CLEANING_NEEDED, "체크아웃"), changedBy);
+
+		// 청소 스케줄 화면에서 미리 만들어 둔 청소 작업이 있으면 새로 만들지 않고 그 작업을 씁니다.
+		HousekeepingTask scheduledCleaning = housekeepingTaskRepository
+				.findFirstByRoomIdAndTaskTypeAndStatusOrderByScheduledAtAscIdAsc(
+						roomId, HousekeepingTaskType.CLEANING, HousekeepingTaskStatus.SCHEDULED)
+				.orElse(null);
+		if (scheduledCleaning != null) {
+			scheduledCleaning.recordCheckout(checkoutTime);
+			// 수정일시(updatedAt)를 응답에 담으려고 먼저 반영합니다. (update 와 같은 이유)
+			housekeepingTaskRepository.flush();
+			return HousekeepingTaskResponse.from(scheduledCleaning);
+		}
 
 		HousekeepingTask housekeepingTask = HousekeepingTask.create(
 				roomId,
