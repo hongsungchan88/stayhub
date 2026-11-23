@@ -57,6 +57,10 @@
                 </dl>
             </div>
             <div class="card-footer text-right">
+                <p id="deadlineNotice" class="text-muted mb-2 d-none"
+                   th:attr="data-today=${#temporals.format(#temporals.createToday(), 'yyyy-MM-dd')}">
+                    체크인 당일이거나 이미 지난 예약은 취소·변경할 수 없습니다.
+                </p>
                 <a th:href="@{/admin/reservations}"
                    class="btn btn-secondary">목록으로</a>
                 <a id="editLink" class="btn btn-primary d-none">예약 변경</a>
@@ -198,12 +202,17 @@
 
                 document.getElementById('details').classList.remove('d-none');
 
+                const notice = document.getElementById('deadlineNotice');
+
                 if (item.status === 'CONFIRMED') {
-                    const editLink = document.getElementById('editLink');
-                    editLink.href =
-                        `/admin/reservations/${reservationId}/edit`;
-                    editLink.classList.remove('d-none');
-                    openCancelButton.classList.remove('d-none');
+                    if (item.checkInDate > notice.dataset.today) {
+                        const editLink = document.getElementById('editLink');
+                        editLink.href = `/admin/reservations/${reservationId}/edit`;
+                        editLink.classList.remove('d-none');
+                        openCancelButton.classList.remove('d-none');
+                    } else {
+                        notice.classList.remove('d-none');
+                    }
                 }
             } catch (error) {
                 if (!error.shown) {

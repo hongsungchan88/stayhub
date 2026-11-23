@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.format.DateTimeFormatter;
 
 /**
  * 예약 생성(중복 방지)·상태 전이 테스트.
@@ -33,7 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class ReservationServiceTest {
 
-	private static final LocalDate D1 = LocalDate.of(2026, 12, 1);
+	private static final LocalDate D1 = LocalDate.now().plusDays(10);
 
 	@Autowired
 	private ReservationService reservationService;
@@ -55,7 +56,8 @@ class ReservationServiceTest {
 		Reservation reservation = reserve(D1, D1.plusDays(2));
 
 		assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.CONFIRMED);
-		assertThat(reservation.getReservationCode()).startsWith("R20261201-");
+		assertThat(reservation.getReservationCode())
+				.startsWith("R" + D1.format(DateTimeFormatter.BASIC_ISO_DATE) + "-");
 		assertThat(reservation.getGuestCount()).isEqualTo(1); // 비우면 1
 	}
 
