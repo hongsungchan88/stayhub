@@ -1,0 +1,19 @@
+{
+  "success": true,
+  "data": [
+    {
+      "channelCode": "MOCK_A",
+      "externalReservationId": "A-1001",
+      "revision": 1,
+      "status": "CONFIRMED",
+      "roomNumber": "TEST-101",
+      "guestName": "Mock Guest",
+      "guestPhone": "010-0000-0000",
+      "checkInDate": "2026-12-10",
+      "checkOutDate": "2026-12-12",
+      "guestCount": 1,
+      "confirmedAt": "2026-11-24T10:00:00+09:00"
+    }
+  ],
+  "message": null
+}
