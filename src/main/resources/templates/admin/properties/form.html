@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<!--/*
+  소개페이지 편집 SCR-CMS-01 (/admin/properties) — CMS-001. HOST 만(AdminMenu PROPERTY).
+
+  이 화면이 하는 일
+    숙소는 1번 하나뿐이라(PropertyScope.DEFAULT_PROPERTY_ID) 목록 없이 이 편집 화면 하나입니다.
+    [기본 정보] 숙소명·소개 문구·시설(체크박스)·게시 상태 → [저장] 이 PUT /api/properties/1 로 한 번에 보냅니다.
+      - 시설은 facilityCodes 배열로 보냅니다(체크된 코드만, 모두 해제면 []). formToJson 은 체크박스를 true/false 로 보내므로
+        시설 체크박스에는 name 을 두지 않고 직접 모읍니다.
+      - 저장에 성공하면 "저장되었습니다." 토스트, 화면은 그대로(화면 흐름도 FLW-04 "SCR-CMS-01 유지").
+      - 필수값 누락은 서버(@Valid) 메시지로 그 칸에 빨간 테두리 + 인라인(FLW-04). 사진 없이 게시면 서버 문구를 폼 위에.
+    [대표 사진] 목록(최대 10장)과 [사진 추가]·[삭제]. 사진은 [저장]과 따로 바로 반영됩니다.
+      - 추가: 파일을 고르면 화면에서 먼저 jpg·jpeg·png / 10MB 이하인지 확인하고, 아니면 업로드 거부 알림 팝업(FLW-04).
+        통과하면 POST /api/property-images/upload (multipart, 칸 이름 file). 서버도 같은 검사를 다시 합니다.
+      - 10장이면 [사진 추가] 를 막습니다. 게시 중 마지막 1장 삭제는 서버가 막고 문구를 보여 줍니다.
+      - 삭제: 확인 팝업 → DELETE /api/property-images/{id} → 토스트 → 목록 다시 불러오기.
+
+  주의
+    업로드는 JSON 이 아니라 파일이라 stayhub.js 의 api() 를 쓰지 않고 uploadFile() 이 fetch 로 보냅니다.
+    401·403·500 처리는 api() 와 같게 맞췄습니다(stop() 재사용).
+    사진 주소(file_path, 예: /uploads/uuid.jpg)는 공통 설정의 /uploads/** 가 보여 줍니다.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{admin/layout :: layout('소개페이지 편집', ~{::section})}">
+<body>
+<section class="content">
+    <div class="container-fluid">
+        <div class="row">
+            <!-- 기본 정보 -->
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header"><h2 class="card-title">기본 정보</h2></div>
+                    <form id="editForm" novalidate>
+                        <div class="card-body">
+                            <div class="alert alert-danger d-none" data-form-error></div>
+
+                            <div class="form-group">
+                                <label for="propertyName" class="required">숙소명</label>
+                                <input type="text" id="propertyName" name="propertyName" class="form-control" maxlength="50">
+                            </div>
+                            <div class="form-group">
+                                <label for="description" class="required">소개 문구</label>
+                                <textarea id="description" name="description" class="form-control" rows="8" maxlength="2000"></textarea>
+                                <small class="form-text text-muted text-right"><span id="descriptionLength">0</span> / 2,000자</small>
+                            </div>
+                            <div class="form-group">
+                                <label>시설</label>
+                                <div id="facilities" class="d-flex flex-wrap"></div>
+                            </div>
+                            <div class="form-group mb-0">
+                                <label for="status" class="required">게시 상태</label>
+                                <select id="status" name="status" class="form-control w-auto">
+                                    <option value="DRAFT">비공개 (작성 중)</option>
+                                    <option value="PUBLISHED">게시</option>
+                                </select>
+                                <small class="form-text text-muted">게시하면 손님 소개 페이지에 바로 반영됩니다. 사진이 1장 이상 있어야 게시할 수 있습니다.</small>
+                            </div>
+                        </div>
+                        <div class="card-footer text-right">
+                            <button type="submit" id="saveButton" class="btn btn-primary">저장</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- 대표 사진 -->
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header d-flex align-items-center">
+                        <h2 class="card-title">대표 사진 <small class="text-muted">(<span id="imageCount">0</span> / 10장)</small></h2>
+                        <button type="button" id="addImageButton" class="btn btn-outline-primary btn-sm ml-auto"
+                                onclick="document.getElementById('imageFile').click()">
+                            <i class="fas fa-plus mr-1"></i>사진 추가
+                        </button>
+                        <input type="file" id="imageFile" class="d-none" multiple
+                               accept=".jpg,.jpeg,.png,image/jpeg,image/png" onchange="addImages(this)">
+                    </div>
+                    <div class="card-body">
+                        <p class="small text-muted mb-2">jpg·png, 1장당 10MB 이하, 최대 10장. 추가·삭제는 [저장] 없이 바로 반영됩니다.</p>
+                        <div id="images" class="row"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+      const PROPERTY_ID = 1; // PropertyScope.DEFAULT_PROPERTY_ID — 숙소는 1번 하나뿐
+      const PROPERTY_URL = `/api/properties/${PROPERTY_ID}`;
+      const IMAGE_URL = '/api/property-images';
+      const UPLOAD_URL = '/api/property-images/upload';
+      const MAX_IMAGES = 10;
+      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB (서버 multipart 설정·PropertyImageCreateRequest 와 같게)
+      const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png'];
+      const ALLOWED_TYPES = ['image/jpeg', 'image/png'];
+
+      const form = document.getElementById('editForm');
+      let imageCount = 0;
+
+      // ---------- 기본 정보 ----------
+
+      async function loadProperty() {
+        try {
+          const [property, facilities, checkedCodes] = await Promise.all([
+            api('GET', PROPERTY_URL),
+            api('GET', '/api/facilities'),
+            api('GET', '/api/property-facilities')
+          ]);
+          fillForm(form, property);
+          updateDescriptionLength();
+          renderFacilities(facilities.content, checkedCodes);
+        } catch (error) {
+          showFormError(form, error);
+        }
+      }
+
+      /** 시설 체크박스. name 을 두지 않아 formToJson 에 섞이지 않습니다(저장 때 checkedFacilityCodes 로 모음). */
+      function renderFacilities(facilities, checkedCodes) {
+        const checked = new Set(checkedCodes);
+        document.getElementById('facilities').innerHTML = facilities.map(f => `
+          <div class="custom-control custom-checkbox mr-4 mb-1">
+            <input type="checkbox" class="custom-control-input" id="facility-${esc(f.id)}"
+                   data-facility="${esc(f.id)}" ${checked.has(f.id) ? 'checked' : ''}>
+            <label class="custom-control-label font-weight-normal" for="facility-${esc(f.id)}">${esc(f.facilityName)}</label>
+          </div>`).join('') || '<span class="text-muted">등록된 시설이 없습니다.</span>';
+      }
+
+      function checkedFacilityCodes() {
+        return [...document.querySelectorAll('[data-facility]:checked')].map(el => el.dataset.facility);
+      }
+
+      function updateDescriptionLength() {
+        document.getElementById('descriptionLength').textContent =
+          document.getElementById('description').value.length.toLocaleString('ko-KR');
+      }
+      document.getElementById('description').addEventListener('input', updateDescriptionLength);
+
+      form.addEventListener('submit', async e => {
+        e.preventDefault();
+        clearFormError(form);
+        const body = formToJson(form);          // propertyName, description, status
+        body.facilityCodes = checkedFacilityCodes(); // 모두 해제면 []
+        const button = document.getElementById('saveButton');
+        button.disabled = true;
+        try {
+          await api('PUT', PROPERTY_URL, body);
+          toast('저장되었습니다.');
+        } catch (error) {
+          showFormError(form, error);
+        } finally {
+          button.disabled = false;
+        }
+      });
+
+      // ---------- 대표 사진 ----------
+
+      async function loadImages() {
+        try {
+          const page = await api('GET', `${IMAGE_URL}?page=0`);
+          imageCount = page.totalElements;
+          renderImages(page.content);
+        } catch (error) {
+          showError(error);
+        }
+      }
+
+      function renderImages(images) {
+        document.getElementById('imageCount').textContent = imageCount;
+        document.getElementById('addImageButton').disabled = imageCount >= MAX_IMAGES;
+        document.getElementById('images').innerHTML = images.map(image => `
+          <div class="col-6 col-md-4 mb-3">
+            <div class="border rounded position-relative">
+              <img src="${esc(image.filePath)}" alt="숙소 사진" class="w-100 rounded-top"
+                   style="height: 140px; object-fit: cover; background: #f4f6f9" onerror="showBrokenImage(this)">
+              <div class="p-1 text-right">
+                <button type="button" class="btn btn-outline-danger btn-xs" onclick="removeImage(${image.id})">삭제</button>
+              </div>
+            </div>
+          </div>`).join('') || '<div class="col text-center text-muted py-5">등록된 사진이 없습니다.</div>';
+      }
+
+      /** 파일이 없어 사진을 못 그릴 때(예: 업로드 폴더에서 파일이 지워짐) 깨진 그림 대신 회색 칸으로. [삭제] 는 그대로 쓸 수 있습니다. */
+      function showBrokenImage(img) {
+        const box = document.createElement('div');
+        box.className = 'd-flex align-items-center justify-content-center text-muted small rounded-top';
+        box.style.cssText = 'height: 140px; background: #f4f6f9';
+        box.textContent = '사진을 불러올 수 없습니다';
+        img.replaceWith(box);
+      }
+
+      /** 파일 고르기 → 하나씩 확인·업로드. 하나라도 거부되면 거기서 멈추고 알림. */
+      async function addImages(input) {
+        const files = [...input.files];
+        input.value = ''; // 같은 파일을 다시 골라도 onchange 가 오도록
+        if (files.length === 0) return;
+
+        if (imageCount + files.length > MAX_IMAGES) {
+          alert(`사진은 최대 ${MAX_IMAGES}장까지 등록할 수 있습니다. 지금 ${imageCount}장이라 ${MAX_IMAGES - imageCount}장만 더 올릴 수 있습니다.`);
+          return;
+        }
+        let uploaded = 0;
+        for (const file of files) {
+          const reason = rejectReason(file);
+          if (reason) {
+            alert(`${file.name}\n${reason}`); // FLW-04 "업로드 거부 알림 팝업"
+            break;
+          }
+          try {
+            await uploadFile(file);
+            uploaded++;
+          } catch (error) {
+            if (!error.shown) alert(`${file.name}\n${error.message}`);
+            break;
+          }
+        }
+        if (uploaded > 0) toast(`사진 ${uploaded}장을 추가했습니다.`);
+        loadImages();
+      }
+
+      /** 화면에서 먼저 하는 검사. 문제가 없으면 null. (서버도 같은 검사를 다시 함) */
+      function rejectReason(file) {
+        const extension = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : '';
+        if (!ALLOWED_EXTENSIONS.includes(extension) || !ALLOWED_TYPES.includes(file.type)) {
+          return 'jpg, png 파일만 업로드할 수 있습니다.';
+        }
+        if (file.size > MAX_FILE_SIZE) {
+          return '파일은 10MB 이하만 올릴 수 있습니다.'; // 서버(GlobalExceptionHandler) 문구와 같게
+        }
+        return null;
+      }
+
+      /** 파일 업로드(multipart). 응답 처리는 stayhub.js 의 api() 와 같게 맞춤. */
+      async function uploadFile(file) {
+        const body = new FormData();
+        body.append('file', file);
+
+        let response;
+        try {
+          response = await fetch(UPLOAD_URL, { method: 'POST', headers: { Accept: 'application/json' }, body });
+        } catch (networkError) {
+          return stop(() => alert(SERVER_ERROR_MESSAGE));
+        }
+        if (response.status === 401) return stop(() => location.href = '/login?expired');
+        if (response.status === 403) return stop(() => location.href = '/403');
+        if (response.status >= 500) return stop(() => alert(SERVER_ERROR_MESSAGE));
+
+        let json;
+        try {
+          json = await response.json();
+        } catch (notJson) {
+          return stop(() => alert(SERVER_ERROR_MESSAGE));
+        }
+        if (!json.success) throw new Error(json.message || SERVER_ERROR_MESSAGE);
+        return json.data;
+      }
+
+      async function removeImage(id) {
+        if (!(await confirmDelete('이 사진을 삭제할까요?'))) return;
+        try {
+          await api('DELETE', `${IMAGE_URL}/${id}`);
+          toast('삭제되었습니다.');
+          loadImages();
+        } catch (error) {
+          showError(error); // 예) 게시 중 마지막 1장
+        }
+      }
+
+      loadProperty();
+      loadImages();
+    </script>
+</section>
+</body>
+</html>

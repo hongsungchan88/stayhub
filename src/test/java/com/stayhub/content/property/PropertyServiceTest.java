@@ -5,10 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.stayhub.common.BusinessException;
 import com.stayhub.common.PageResponse;
+import com.stayhub.common.PropertyScope;
 import com.stayhub.content.property.dto.PropertyCreateRequest;
 import com.stayhub.content.property.dto.PropertyResponse;
 import com.stayhub.content.property.dto.PropertyUpdateRequest;
+import com.stayhub.content.property.entity.PropertyImage;
 import com.stayhub.content.property.entity.PropertyStatus;
+import com.stayhub.content.property.repository.PropertyImageRepository;
 import com.stayhub.content.property.repository.PropertyRepository;
 import com.stayhub.content.property.service.PropertyService;
 import java.util.List;
@@ -26,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
  * {@code @Transactional} 이라 테스트가 끝나면 넣었던 데이터가 전부 되돌려집니다(롤백).
  *
  * <p>유형 ②라 삭제 테스트는 없고, 없는 항목 조회는 99999L 로 확인합니다.
+ * 게시(PUBLISHED)는 사진이 1장 이상 있어야 합니다(총괄 결정 2026-11-25).
  */
 @SpringBootTest
 @Transactional
@@ -37,10 +41,14 @@ class PropertyServiceTest {
 	@Autowired
 	private PropertyRepository propertyRepository;
 
+	@Autowired
+	private PropertyImageRepository propertyImageRepository;
+
 	@BeforeEach
 	void setUp() {
 		// 개발 DB 에 이미 들어 있는 데이터 때문에 결과가 흔들리지 않도록 테스트 안에서만 비웁니다.
 		// 경고: @Transactional을 지우면 개발 DB의 이 테이블이 실제로 비워집니다. 지우지 마세요.
+		propertyImageRepository.deleteAll();
 		propertyRepository.deleteAll();
 	}
 
@@ -58,6 +66,7 @@ class PropertyServiceTest {
 	@DisplayName("수정하면 바뀐 값과 게시 상태가 조회된다")
 	void updateIsApplied() {
 		PropertyResponse created = propertyService.create(createRequest("바다 앞 펜션"));
+		addImage(); // 게시하려면 사진 1장 이상
 
 		propertyService.update(created.id(), new PropertyUpdateRequest(
 				"산속 펜션", "<p>조용한 산속 숙소입니다.</p>", PropertyStatus.PUBLISHED,
@@ -75,6 +84,30 @@ class PropertyServiceTest {
 		assertThatThrownBy(() -> propertyService.getDetail(99999L))
 				.isInstanceOf(BusinessException.class)
 				.hasMessage("숙소를 찾을 수 없습니다.");
+	}
+
+	@Test
+	@DisplayName("사진 없이 게시(PUBLISHED)로 저장하면 BusinessException 이 나고 아무것도 바뀌지 않는다. DRAFT 는 사진 없이 저장된다")
+	void publishWithoutImageIsRejected() {
+		PropertyResponse created = propertyService.create(createRequest("바다 앞 펜션"));
+
+		assertThatThrownBy(() -> propertyService.update(created.id(), new PropertyUpdateRequest(
+				"산속 펜션", "<p>소개</p>", PropertyStatus.PUBLISHED, List.of())))
+				.isInstanceOf(BusinessException.class)
+				.hasMessage(PropertyService.IMAGE_REQUIRED_TO_PUBLISH);
+		PropertyResponse unchanged = propertyService.getDetail(created.id());
+		assertThat(unchanged.propertyName()).isEqualTo("바다 앞 펜션");
+		assertThat(unchanged.status()).isEqualTo(PropertyStatus.DRAFT);
+
+		propertyService.update(created.id(), new PropertyUpdateRequest(
+				"산속 펜션", "<p>소개</p>", PropertyStatus.DRAFT, List.of()));
+		assertThat(propertyService.getDetail(created.id()).propertyName()).isEqualTo("산속 펜션");
+	}
+
+	/** 테스트용 사진 1장 (파일 없이 행만). */
+	private void addImage() {
+		propertyImageRepository.save(PropertyImage.create(
+				PropertyScope.DEFAULT_PROPERTY_ID, "/uploads/test.jpg", 1024, "jpg", null, null));
 	}
 
 	/** 테스트용 등록 요청. 소개 문구는 테스트마다 중요하지 않아 고정값으로 둡니다. */

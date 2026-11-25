@@ -13,11 +13,13 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.ColumnDefault;
 
 /**
- * 숙소 이미지 (테이블 {@code property_images}). 유형 ③ — status 가 없고 삭제 기능도 없습니다.
+ * 숙소 이미지 (테이블 {@code property_images}). 유형 ③ — status 가 없습니다.
  *
  * <p>소개 페이지 대표 사진(1~10장)의 저장 경로·용량·노출 순서를 관리합니다.
  *
- * <p>값을 바꾸는 방법은 {@link #create} / {@link #update} 뿐입니다. (삭제 없음)
+ * <p>값을 바꾸는 방법은 {@link #create} / {@link #update} 뿐입니다.
+ * 삭제는 행을 실제로 지웁니다(소프트 삭제 아님). 정책정의서 24행의 예외로, property_facilities 와 같은 취급입니다(총괄 결정 2026-11-25).
+ * 지우는 일은 {@code PropertyImageService.delete} 가 리포지토리로 합니다.
  */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED) // JPA 가 쓰는 빈 생성자. 직접 new 하지 말고 create() 를 쓰세요.

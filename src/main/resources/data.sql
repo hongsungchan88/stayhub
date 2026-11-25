@@ -5,6 +5,11 @@ INSERT IGNORE INTO facilities (facility_code, facility_name, sort_order, use_yn,
 ('WIFI', '와이파이', 2, true, NOW(), NOW()),
 ('BREAKFAST', '조식', 3, true, NOW(), NOW());
 
+-- 숙소(properties) 1번 기본 행. 소개페이지 편집 화면(SCR-CMS-01)은 PropertyScope.DEFAULT_PROPERTY_ID(1번) 숙소만 편집합니다.
+-- 행이 없으면 편집할 대상이 없으므로 DRAFT(비공개)로 한 번만 넣어 둡니다(총괄 결정). 이미 있으면 건너뜁니다.
+INSERT IGNORE INTO properties (property_id, property_name, description, status, updated_by, created_at, updated_at) VALUES
+(1, '스테이허브', '숙소 소개 문구를 입력해 주세요.', 'DRAFT', NULL, NOW(), NOW());
+
 -- 채널(channels) 기본 데이터. 채널 등록 API가 생기기 전에도 결제를 등록할 수 있게 넣어 둡니다(PAY-003).
 -- channel_name에는 중복 제한이 없어서, channel_id를 직접 정해 INSERT IGNORE로 한 번만 들어가게 합니다.
 -- 1번: 직접 예약(등록 채널, 수수료 0%). 2번: 기타 채널(미등록 채널, 기본 수수료율 10% 적용).

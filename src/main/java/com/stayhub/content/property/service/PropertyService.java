@@ -6,6 +6,8 @@ import com.stayhub.content.property.dto.PropertyCreateRequest;
 import com.stayhub.content.property.dto.PropertyResponse;
 import com.stayhub.content.property.dto.PropertyUpdateRequest;
 import com.stayhub.content.property.entity.Property;
+import com.stayhub.content.property.entity.PropertyStatus;
+import com.stayhub.content.property.repository.PropertyImageRepository;
 import com.stayhub.content.property.repository.PropertyRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -22,10 +24,13 @@ import org.springframework.transaction.annotation.Transactional;
  * {@code property_id} 는 자기 PK 라서 {@code PropertyScope} 값을 넣지 않습니다.
  *
  * <p>숙소 소개 저장(수정) 시 체크된 시설도 함께 저장합니다({@link PropertyFacilityService#sync}).
+ * 게시(PUBLISHED)로 저장하려면 사진이 1장 이상 있어야 합니다(정의서 "대표 사진 1~10장", 총괄 결정 2026-11-25).
  */
 @Service
 @Transactional(readOnly = true)
 public class PropertyService {
+
+	public static final String IMAGE_REQUIRED_TO_PUBLISH = "게시하려면 사진을 1장 이상 등록해 주세요.";
 
 	/** 목록 정렬: property_id 오름차순(등록 순). */
 	private static final Sort LIST_SORT = Sort.by(
@@ -34,13 +39,16 @@ public class PropertyService {
 
 	private final PropertyRepository propertyRepository;
 	private final PropertyFacilityService propertyFacilityService;
+	private final PropertyImageRepository propertyImageRepository;
 
 	public PropertyService(
 			PropertyRepository propertyRepository,
-			PropertyFacilityService propertyFacilityService
+			PropertyFacilityService propertyFacilityService,
+			PropertyImageRepository propertyImageRepository
 	) {
 		this.propertyRepository = propertyRepository;
 		this.propertyFacilityService = propertyFacilityService;
+		this.propertyImageRepository = propertyImageRepository;
 	}
 
 	/**
@@ -70,11 +78,16 @@ public class PropertyService {
 
 	/**
 	 * 수정. 게시 상태와 체크된 시설도 여기서 바꿉니다.
-	 * 없는 항목이거나 사용할 수 없는 시설 코드가 있으면 BusinessException (전부 취소).
+	 * 없는 항목, 사용할 수 없는 시설 코드, 사진 없이 게시(PUBLISHED)면 BusinessException (전부 취소).
 	 */
 	@Transactional
 	public PropertyResponse update(Long id, PropertyUpdateRequest request) {
 		Property property = findOrThrow(id);
+		// 숙소가 1번 하나뿐이라(PropertyScope) 사진은 테이블 전체 장수로 셉니다. 바꾸기 전에 확인합니다.
+		if (request.status() == PropertyStatus.PUBLISHED && propertyImageRepository.count() == 0) {
+			throw new BusinessException(IMAGE_REQUIRED_TO_PUBLISH);
+		}
+
 		property.update(
 				request.propertyName(),
 				request.description(),
