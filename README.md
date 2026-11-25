@@ -27,8 +27,10 @@
 
 - **브랜치** `main` / `feature-{코드}-{작업명}` — 예: `feature-rsv-checkin`
 - **커밋** `[도메인] 작업내용` — 예: `[RSV] 예약 목록 검색 조건 추가`
-- **병합** main 직접 push 금지. feature → PR → 총괄 승인 → Squash merge → 브랜치 삭제
+- **병합** main 직접 push 금지. feature → PR → **자동 테스트(gradle-test) 통과** → 총괄 승인 → Squash merge → 브랜치 삭제
+- 머지 전에 PR 화면의 **[Update branch]** 를 눌러 최신 main을 반영하세요(누르면 테스트가 다시 돕니다). 실패하면 [PR 테스트(CI)](docs/troubleshooting.md#pr-테스트ci) 참고
 - **PR 본문** 무엇을 / 왜 / 확인한 것 / 관련 기능ID 4항목 필수. 변경 파일 20개 이하
+- PR 본문에 본인 말로 동작을 설명하지 못하면 머지하지 않습니다
 - **금지** main 직접 push · `git push -f` · 남의 도메인 파일 임의 수정
 - **커밋 제외** DB 접속정보, `application-local.yml`, 빌드 결과물, 10MB 초과 파일
 
