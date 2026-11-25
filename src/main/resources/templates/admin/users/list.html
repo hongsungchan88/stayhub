@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<!--/*
+  직원 계정 관리 SCR-ACC-04 (/admin/users) — 목록 + 등록/수정 팝업 (ACC-005). 호스트만 열 수 있습니다.
+
+  이 화면이 하는 일
+    GET /api/users?page= 로 20건씩 불러와 표로 그립니다(ACTIVE 만).
+    [등록] → 팝업 → POST /api/users.  [수정] → 팝업(GET /api/users/{id} 로 채움) → PUT /api/users/{id} (이름·역할만)
+    [삭제] → 확인 팝업 → DELETE /api/users/{id} → 토스트 → 지금 페이지 다시 불러오기
+    HOST 계정 줄은 수정·삭제 버튼이 없습니다(서버도 막음 — 총괄 결정 5).
+    입력 칸 name 은 UserCreateRequest·UserUpdateRequest 필드명과 같습니다(검증 오류가 그 칸 아래에 붙음).
+    팝업 모양은 layout.html 의 #confirmModal 을 복사했습니다(레이아웃 주석 "입력 팝업을 만들 때").
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{admin/layout :: layout('직원 계정 관리', ~{::section})}">
+<body>
+<section class="content">
+    <div class="container-fluid">
+        <div class="card">
+            <div class="card-header d-flex align-items-center">
+                <button type="button" class="btn btn-primary btn-sm ml-auto" onclick="openCreate()">등록</button>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead>
+                    <tr>
+                        <th style="width: 140px">아이디</th>
+                        <th style="width: 120px">이름</th>
+                        <th style="width: 110px">역할</th>
+                        <th style="width: 140px">전화번호</th>
+                        <th>이메일</th>
+                        <th style="width: 120px">등록일</th>
+                        <th style="width: 140px">관리</th>
+                    </tr>
+                    </thead>
+                    <tbody id="rows"></tbody>
+                </table>
+            </div>
+            <div class="card-footer" id="pagination"></div>
+        </div>
+    </div>
+
+    <!-- 등록/수정 팝업 (layout.html 의 #confirmModal 모양) -->
+    <div class="modal fade" id="userModal" tabindex="-1" role="dialog" aria-labelledby="userModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <form id="userForm" novalidate>
+                    <div class="modal-header">
+                        <h2 class="modal-title h5" id="userModalTitle">직원 계정 등록</h2>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none" data-form-error></div>
+
+                        <div class="form-group">
+                            <label for="loginId" class="required">아이디</label>
+                            <input type="text" id="loginId" name="loginId" class="form-control" maxlength="20" data-create-only>
+                            <small class="form-text text-muted">영문·숫자 4~20자</small>
+                        </div>
+                        <div class="form-group" id="passwordGroup">
+                            <label for="password" class="required">초기 비밀번호</label>
+                            <input type="password" id="password" name="password" class="form-control" autocomplete="new-password">
+                            <small class="form-text text-muted">8자 이상, 특수문자 1개 이상</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="name" class="required">이름</label>
+                            <input type="text" id="name" name="name" class="form-control" maxlength="50">
+                        </div>
+                        <div class="form-group">
+                            <label for="phoneNumber" class="required">전화번호</label>
+                            <input type="text" id="phoneNumber" name="phoneNumber" class="form-control" maxlength="20" data-create-only>
+                        </div>
+                        <div class="form-group">
+                            <label for="email" class="required">이메일</label>
+                            <input type="email" id="email" name="email" class="form-control" maxlength="100" data-create-only>
+                        </div>
+                        <div class="form-group">
+                            <label for="role" class="required">역할</label>
+                            <select id="role" name="role" class="form-control">
+                                <option value="">선택해 주세요</option>
+                                <option value="FRONT">프런트</option>
+                                <option value="CLEANING">청소</option>
+                                <option value="STAFF">관리 스태프</option>
+                            </select>
+                            <small class="form-text text-muted" id="roleHelp">역할을 바꾸면 그 직원은 다시 로그인해야 합니다.</small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">취소</button>
+                        <button type="submit" class="btn btn-primary">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api/users';
+        const ROLE_LABELS = { HOST: '호스트', FRONT: '프런트', CLEANING: '청소', STAFF: '관리 스태프' };
+
+        const form = document.getElementById('userForm');
+        const $modal = $('#userModal');
+        let currentPage = 0;
+        let editingId = null; // null 이면 등록, 숫자면 수정
+
+        async function load(page) {
+            try {
+                const result = await api('GET', `${API_URL}?page=${page}`);
+                if (result.content.length === 0 && page > 0) return load(page - 1); // 마지막 페이지의 마지막 건을 지웠을 때
+                currentPage = page;
+                renderRows(document.getElementById('rows'), result.content, user => `
+            <tr>
+              <td>${esc(user.loginId)}</td>
+              <td>${esc(user.name)}</td>
+              <td>${esc(ROLE_LABELS[user.role] || user.role)}</td>
+              <td>${esc(user.phoneNumber)}</td>
+              <td>${esc(user.email)}</td>
+              <td>${formatDate(user.createdAt)}</td>
+              <td>${user.role === 'HOST' ? '' : `
+                <button type="button" class="btn btn-outline-secondary btn-xs" onclick="openEdit(${user.id})">수정</button>
+                <button type="button" class="btn btn-outline-danger btn-xs" onclick="remove(${user.id})">삭제</button>`}
+              </td>
+            </tr>`);
+                renderPagination(document.getElementById('pagination'), result, load);
+            } catch (error) {
+                showError(error);
+            }
+        }
+
+        /** 팝업 열기. 수정이면 이름·역할만 바꿀 수 있게(UserUpdateRequest) 나머지 칸은 읽기 전용, 비밀번호 칸은 숨김 */
+        function openModal(id) {
+            editingId = id;
+            form.reset();
+            clearFormError(form);
+            document.getElementById('userModalTitle').textContent = id ? '직원 계정 수정' : '직원 계정 등록';
+            form.querySelectorAll('[data-create-only]').forEach(el => el.readOnly = Boolean(id));
+            document.getElementById('passwordGroup').classList.toggle('d-none', Boolean(id));
+            document.getElementById('roleHelp').classList.toggle('d-none', !id);
+            $modal.modal('show');
+        }
+
+        function openCreate() {
+            openModal(null);
+        }
+
+        async function openEdit(id) {
+            openModal(id);
+            try {
+                fillForm(form, await api('GET', `${API_URL}/${id}`));
+            } catch (error) {
+                showFormError(form, error); // 이미 삭제된 계정 등은 팝업 위에 메시지
+            }
+        }
+
+        // 팝업이 열리면 처음 입력할 칸에 포커스 (등록: 아이디, 수정: 이름)
+        $modal.on('shown.bs.modal', () => $(form).find('input:visible:not([readonly])').first().trigger('focus'));
+
+        form.addEventListener('submit', async e => {
+            e.preventDefault();
+            clearFormError(form);
+            const body = formToJson(form);
+            try {
+                if (editingId) await api('PUT', `${API_URL}/${editingId}`, { name: body.name, role: body.role });
+                else await api('POST', API_URL, body);
+                $modal.modal('hide');
+                toast('저장되었습니다.');
+                load(currentPage);
+            } catch (error) {
+                showFormError(form, error);
+            }
+        });
+
+        async function remove(id) {
+            if (!(await confirmDelete('이 직원 계정을 삭제할까요? 로그인 중이면 바로 로그아웃됩니다.'))) return;
+            try {
+                await api('DELETE', `${API_URL}/${id}`);
+                toast('삭제되었습니다.');
+                load(currentPage);
+            } catch (error) {
+                showError(error);
+            }
+        }
+
+        load(0);
+    </script>
+</section>
+</body>
+</html>
