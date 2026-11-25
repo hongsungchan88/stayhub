@@ -1,7 +1,14 @@
 package com.stayhub.common;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
@@ -15,12 +22,29 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * </ul>
  * {@code /login}, {@code /403}, {@code /}, 정적 파일({@code /js}, {@code /css})은 로그인 없이 열립니다.
  *
+ * <p>업로드한 사진은 {@code /uploads/**} 로 열립니다(SCR-CMS-01). 게스트 화면에서도 보므로 로그인 없이 열립니다.
+ *
  * <p><b>따라 만들 때 바꿀 곳</b>
  * <br>로그인 없이 열어야 하는 API 가 새로 생길 때만 {@code excludePathPatterns} 에 추가합니다.
  * 함부로 추가하면 그 API 는 누구나 부를 수 있게 되므로 총괄과 상의하세요.
  */
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
+
+	@Value("${stayhub.upload-dir}")
+	private String uploadDir;
+
+	/** 업로드 폴더를 (없으면 만들어) {@code /uploads/**} 주소에 연결합니다. 앱이 시작될 때 한 번 실행됩니다. */
+	@Override
+	public void addResourceHandlers(ResourceHandlerRegistry registry) {
+		try {
+			Files.createDirectories(Path.of(uploadDir));
+		} catch (IOException e) {
+			throw new UncheckedIOException("업로드 폴더를 만들 수 없습니다: " + uploadDir, e);
+		}
+		registry.addResourceHandler("/uploads/**")
+				.addResourceLocations(new FileSystemResource(uploadDir + "/")); // 끝의 / 가 없으면 폴더로 보지 않습니다
+	}
 
 	@Override
 	public void addInterceptors(InterceptorRegistry registry) {

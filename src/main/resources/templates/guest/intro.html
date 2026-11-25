@@ -5,8 +5,12 @@
   이 화면이 하는 일
     GET /api/public/property 로 숙소명·소개 문구·시설·사진을 불러와 그립니다.
     숙소가 게시(PUBLISHED) 전이면 서버가 "준비 중인 숙소입니다." 를 돌려주고, 화면은 그 문구만 보여 줍니다.
-    사진이 없으면 갤러리 영역을, 시설이 없으면 시설 영역을 숨깁니다.
-    예약 위젯(날짜·인원 → [빈 객실 찾기])은 /reserve?checkIn=&checkOut=&guests= 로 이동합니다(SCR-GST-03). 리뷰 영역은 CMS-005 v2 이관이라 없습니다.
+    불러오는 동안은 회색 자리 표시(#loading)를 보여 줍니다.
+    첫 화면(히어로)은 사진이 있으면 첫 사진을, 없으면 옅은 파랑 면을 배경으로 씁니다.
+    사진이 2장 이상일 때만 갤러리를 보여 주고, 시설이 없으면 시설 영역을 숨깁니다.
+    히어로 아래 검색 카드(날짜·인원 → [빈 객실 조회], 기본값 오늘~내일·2명)는 /reserve?checkIn=&checkOut=&guests= 로 이동합니다(SCR-GST-03).
+    체크인을 바꾸면 체크아웃은 체크인 다음 날부터 고를 수 있고, 그보다 이르면 자동으로 맞춥니다. 리뷰 영역은 CMS-005 v2 이관이라 없습니다.
+    모양은 static/css/guest.css 에 있습니다. 화면마다 따로 만들지 마세요.
 
   따라 만들 때 바꿀 곳 (★ 로 검색)
     - layout(...) 의 화면 제목과 현재 메뉴
@@ -21,29 +25,21 @@
 <section>
     <div id="notice" class="alert alert-secondary text-center py-5 d-none" role="status"></div>
 
+    <div id="loading" role="status">
+        <span class="sr-only">불러오는 중…</span>
+        <div class="guest-skeleton mb-4" style="height: 340px"></div>
+        <div class="guest-skeleton mb-3" style="height: 24px; width: 30%"></div>
+        <div class="guest-skeleton" style="height: 96px"></div>
+    </div>
+
     <div id="property" class="d-none">
-        <h1 id="propertyName" class="h3 mb-4"></h1>
-
-        <div id="gallery" class="row d-none mb-4"></div>
-
-        <div class="card mb-4">
-            <div class="card-body">
-                <h2 class="h5">숙소 소개</h2>
-                <p id="description" class="mb-0"></p>
-            </div>
+        <div id="hero" class="guest-hero">
+            <h1 id="propertyName"></h1>
         </div>
 
-        <div id="facilitiesCard" class="card mb-4 d-none">
-            <div class="card-body">
-                <h2 class="h5">시설</h2>
-                <ul id="facilities" class="list-inline mb-0"></ul>
-            </div>
-        </div>
-
-        <!--/* 예약 위젯 (FLW-08). 날짜·인원을 담아 /reserve 로 이동하면 그 화면이 바로 빈 객실을 조회합니다 */-->
-        <form class="card" method="get" th:action="@{/reserve}" aria-labelledby="reserveTitle">
-            <div class="card-body">
-                <h2 id="reserveTitle" class="h5">예약하기</h2>
+        <!--/* 검색 카드 (FLW-08). 날짜·인원을 담아 /reserve 로 이동하면 그 화면이 바로 빈 객실을 조회합니다 */-->
+        <form class="card guest-search" method="get" th:action="@{/reserve}" aria-label="빈 객실 조회">
+            <div class="card-body pb-2">
                 <div class="form-row align-items-end">
                     <div class="col-md-4 form-group">
                         <label for="widgetCheckIn">체크인</label>
@@ -58,25 +54,43 @@
                         <input type="number" id="widgetGuests" name="guests" class="form-control" min="1" value="2" required>
                     </div>
                     <div class="col-md-2 form-group">
-                        <button type="submit" class="btn btn-primary btn-block">빈 객실 찾기</button>
+                        <button type="submit" class="btn btn-primary btn-block text-nowrap px-1">빈 객실 조회</button>
                     </div>
                 </div>
             </div>
         </form>
+
+        <div class="mb-5">
+            <h2 class="h5 mb-3">숙소 소개</h2>
+            <p id="description" class="mb-0"></p>
+        </div>
+
+        <div id="facilitiesBox" class="mb-5 d-none">
+            <h2 class="h5 mb-3">시설</h2>
+            <ul id="facilities" class="list-unstyled mb-0"></ul>
+        </div>
+
+        <div id="galleryBox" class="mb-4 d-none">
+            <h2 class="h5 mb-3">사진</h2>
+            <div id="gallery" class="row"></div>
+        </div>
     </div>
 
     <script>
       const API_URL = '/api/public/property'; // ★ 바꿀 곳
 
+      // ★ 바꿀 곳: 시설 이름별 아이콘 (없는 이름은 체크 표시)
+      const FACILITY_ICON = { 주차: 'fa-parking', 와이파이: 'fa-wifi', 조식: 'fa-utensils' };
+
       async function load() {
         try {
           render(await api('GET', API_URL));
         } catch (error) {
-          if (error.shown) return; // 서버 오류는 api() 가 이미 안내했습니다
           const notice = document.getElementById('notice');
           notice.textContent = error.message; // 예) 준비 중인 숙소입니다.
           notice.classList.remove('d-none');
         }
+        document.getElementById('loading').classList.add('d-none');
       }
 
       function render(property) { // ★ 바꿀 곳: 내 API 응답에 맞게
@@ -86,28 +100,51 @@
         document.getElementById('description').innerHTML = esc(property.description).replace(/\n/g, '<br>');
 
         if (property.images.length) {
+          const hero = document.getElementById('hero');
+          const photo = new Image();
+          photo.alt = '';
+          photo.onload = () => { // 사진을 못 불러오면 옅은 파랑 면 그대로 둡니다
+            hero.prepend(photo);
+            hero.classList.add('guest-hero-photo');
+          };
+          photo.src = property.images[0];
+        }
+
+        if (property.images.length >= 2) {
           const gallery = document.getElementById('gallery');
           gallery.innerHTML = property.images.map((path, i) =>
             `<div class="col-6 col-md-4 mb-3">
-               <img src="${esc(path)}" class="img-fluid rounded w-100" style="aspect-ratio: 4 / 3; object-fit: cover"
+               <img src="${esc(path)}" class="guest-photo"
                     alt="${esc(property.propertyName)} 사진 ${i + 1}">
              </div>`).join('');
-          gallery.classList.remove('d-none');
+          document.getElementById('galleryBox').classList.remove('d-none');
         }
 
         if (property.facilities.length) {
           document.getElementById('facilities').innerHTML = property.facilities.map(name =>
-            `<li class="list-inline-item mr-4"><i class="fas fa-check text-success mr-1" aria-hidden="true"></i>${esc(name)}</li>`).join('');
-          document.getElementById('facilitiesCard').classList.remove('d-none');
+            `<li class="guest-chip"><i class="fas ${FACILITY_ICON[name] || 'fa-check'} mr-2" aria-hidden="true"></i>${esc(name)}</li>`).join('');
+          document.getElementById('facilitiesBox').classList.remove('d-none');
         }
 
         document.getElementById('property').classList.remove('d-none');
       }
 
-      // 예약 위젯: 오늘 이전 날짜는 고를 수 없게
+      // 검색 카드: 오늘 이전 날짜는 고를 수 없게, 체크아웃은 체크인 다음 날부터
+      const nextDay = date => {
+        const next = new Date(date + 'T00:00:00Z');
+        if (isNaN(next)) return ''; // 날짜를 지웠을 때
+        next.setUTCDate(next.getUTCDate() + 1);
+        return next.toISOString().slice(0, 10);
+      };
+      const checkIn = document.getElementById('widgetCheckIn');
+      const checkOut = document.getElementById('widgetCheckOut');
       const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-      document.getElementById('widgetCheckIn').min = today;
-      document.getElementById('widgetCheckOut').min = today;
+      checkIn.min = checkIn.value = today;
+      checkOut.min = checkOut.value = nextDay(today);
+      checkIn.addEventListener('change', () => {
+        checkOut.min = nextDay(checkIn.value) || nextDay(today);
+        if (checkOut.value && checkOut.value < checkOut.min) checkOut.value = checkOut.min;
+      });
 
       load();
     </script>

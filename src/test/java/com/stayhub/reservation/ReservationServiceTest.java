@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.format.DateTimeFormatter;
 
 /**
  * 예약 생성(중복 방지)·상태 전이 테스트.
@@ -33,7 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class ReservationServiceTest {
 
-	private static final LocalDate D1 = LocalDate.of(2026, 12, 1);
+	private static final LocalDate D1 = LocalDate.now().plusDays(10);
 
 	@Autowired
 	private ReservationService reservationService;
@@ -55,7 +56,8 @@ class ReservationServiceTest {
 		Reservation reservation = reserve(D1, D1.plusDays(2));
 
 		assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.CONFIRMED);
-		assertThat(reservation.getReservationCode()).startsWith("R20261201-");
+		assertThat(reservation.getReservationCode())
+				.startsWith("R" + D1.format(DateTimeFormatter.BASIC_ISO_DATE) + "-");
 		assertThat(reservation.getGuestCount()).isEqualTo(1); // 비우면 1
 	}
 
@@ -81,14 +83,23 @@ class ReservationServiceTest {
 	}
 
 	@Test
-	@DisplayName("취소·노쇼된 예약과는 날짜가 겹쳐도 허용한다")
+	@DisplayName("취소·노쇼된 예약은 같은 날짜의 재예약을 막지 않는다")
 	void releasedReservationsDoNotBlock() {
-		Reservation cancelled = reserve(D1, D1.plusDays(2));
-		reservationService.changeStatus(cancelled.getId(), ReservationStatus.CANCELLED);
-		Reservation noShow = reserve(D1, D1.plusDays(2));
-		reservationService.changeStatus(noShow.getId(), ReservationStatus.NOSHOW);
+		LocalDate future = LocalDate.now().plusDays(10);
 
-		assertThat(reserve(D1, D1.plusDays(2)).getId()).isNotNull();
+		Reservation cancelled = reserve(future, future.plusDays(1));
+		reservationService.changeStatus(
+				cancelled.getId(), ReservationStatus.CANCELLED);
+
+		assertThat(reserve(future, future.plusDays(1)).getId()).isNotNull();
+
+		LocalDate today = LocalDate.now();
+
+		Reservation noShow = reserve(today, today.plusDays(1));
+		reservationService.changeStatus(
+				noShow.getId(), ReservationStatus.NOSHOW);
+
+		assertThat(reserve(today, today.plusDays(1)).getId()).isNotNull();
 	}
 
 	@Test
@@ -111,17 +122,30 @@ class ReservationServiceTest {
 	}
 
 	@Test
-	@DisplayName("허용된 전이는 전부 성공한다 — CONFIRMED→CANCELLED/NOSHOW/CHECKED_IN, CHECKED_IN→CHECKED_OUT")
+	@DisplayName("업무 날짜 조건을 만족하면 허용된 상태 전이가 성공한다")
 	void allowedTransitions() {
-		for (ReservationStatus next : EnumSet.of(
-				ReservationStatus.CANCELLED, ReservationStatus.NOSHOW, ReservationStatus.CHECKED_IN)) {
-			Reservation reservation = reserve(D1.plusMonths(next.ordinal()), D1.plusMonths(next.ordinal()).plusDays(1));
-			assertThat(reservationService.changeStatus(reservation.getId(), next).getStatus()).isEqualTo(next);
-		}
+		LocalDate today = LocalDate.now();
 
-		Reservation stay = reserve(D1.plusYears(1), D1.plusYears(1).plusDays(1));
-		reservationService.changeStatus(stay.getId(), ReservationStatus.CHECKED_IN);
-		assertThat(reservationService.changeStatus(stay.getId(), ReservationStatus.CHECKED_OUT).getStatus())
+		Reservation cancelled = reserve(
+				today.plusDays(10), today.plusDays(11));
+		assertThat(reservationService.changeStatus(
+				cancelled.getId(), ReservationStatus.CANCELLED).getStatus())
+				.isEqualTo(ReservationStatus.CANCELLED);
+
+		Reservation noShow = reserve(today, today.plusDays(1));
+		assertThat(reservationService.changeStatus(
+				noShow.getId(), ReservationStatus.NOSHOW).getStatus())
+				.isEqualTo(ReservationStatus.NOSHOW);
+
+		Reservation stay = reserve(
+				today.plusDays(20), today.plusDays(21));
+
+		assertThat(reservationService.changeStatus(
+				stay.getId(), ReservationStatus.CHECKED_IN).getStatus())
+				.isEqualTo(ReservationStatus.CHECKED_IN);
+
+		assertThat(reservationService.changeStatus(
+				stay.getId(), ReservationStatus.CHECKED_OUT).getStatus())
 				.isEqualTo(ReservationStatus.CHECKED_OUT);
 	}
 
@@ -158,11 +182,24 @@ class ReservationServiceTest {
 				"CONFIRMED->CANCELLED", "CONFIRMED->NOSHOW", "CONFIRMED->CHECKED_IN", "CHECKED_IN->CHECKED_OUT");
 	}
 
-	private void assertRejected(Reservation reservation, ReservationStatus next) {
+	private void assertRejected(
+			Reservation reservation,
+			ReservationStatus next
+	) {
 		ReservationStatus before = reservation.getStatus();
-		assertThatThrownBy(() -> reservationService.changeStatus(reservation.getId(), next))
+
+		String expectedMessage =
+				next == ReservationStatus.CANCELLED
+						&& before != ReservationStatus.CONFIRMED
+						? "예약 확정 상태에서만 취소할 수 있습니다."
+						: "예약 상태를 " + before + "에서 "
+						+ next + "(으)로 바꿀 수 없습니다.";
+
+		assertThatThrownBy(() ->
+				reservationService.changeStatus(reservation.getId(), next))
 				.isInstanceOf(BusinessException.class)
-				.hasMessage("예약 상태를 " + before + "에서 " + next + "(으)로 바꿀 수 없습니다.");
+				.hasMessage(expectedMessage);
+
 		assertThat(reservation.getStatus()).isEqualTo(before);
 	}
 

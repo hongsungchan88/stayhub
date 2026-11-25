@@ -132,6 +132,11 @@ public class Reservation extends BaseEntity {
 		this.checkOutDate = checkOutDate;
 	}
 
+	/** 취소 사유 저장. 상태 변경은 ReservationService에서 처리합니다. */
+	public void recordCancelReason(String reason) {
+		this.cancelReason = reason;
+	}
+
 	/** 상태 변경. 허용되지 않는 변경이면 BusinessException. */
 	public void changeStatus(ReservationStatus next) {
 		if (!status.canChangeTo(next)) {
