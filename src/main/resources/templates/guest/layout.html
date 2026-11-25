@@ -53,9 +53,9 @@
                 <li class="nav-item" th:classappend="${menu == 'reserve'} ? 'active'">
                     <a class="nav-link" th:href="@{/reserve}" th:attr="aria-current=${menu == 'reserve'} ? 'page'">예약하기</a>
                 </li>
-                <!--/* ★ GST-04 가 생기면 링크로 */-->
-                <li class="nav-item">
-                    <span class="nav-link disabled" aria-disabled="true">내 예약 조회 <small>(준비 중)</small></span>
+                <li class="nav-item" th:classappend="${menu == 'my-reservation'} ? 'active'">
+                    <a class="nav-link" th:href="@{/my-reservation}"
+                       th:attr="aria-current=${menu == 'my-reservation'} ? 'page'">내 예약 조회</a>
                 </li>
             </ul>
         </div>

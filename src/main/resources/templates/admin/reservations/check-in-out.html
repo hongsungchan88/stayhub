@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{admin/layout :: layout('체크인 / 체크아웃', ~{::section})}">
+<body><section class="content"><div class="container-fluid">
+    <div class="card"><div class="card-header">
+        <h2 class="card-title">입실 대상 · 투숙 중 예약</h2>
+        <button type="button" id="again" class="btn btn-outline-secondary btn-sm float-right">새로고침</button>
+    </div><div class="card-body">
+        <div id="deskError" role="alert" class="text-danger mb-2"></div>
+        <div class="table-responsive"><table class="table">
+            <thead><tr><th>예약번호</th><th>예약자</th><th>객실</th><th>체크인</th><th>체크아웃</th><th>상태</th><th>처리</th></tr></thead>
+            <tbody id="deskRows"></tbody>
+        </table></div>
+        <nav class="text-center" aria-label="입퇴실 목록 페이지">
+            <button id="prev" type="button" class="btn btn-light">이전</button>
+            <span id="pages" class="mx-2"></span>
+            <button id="next" type="button" class="btn btn-light">다음</button>
+        </nav>
+    </div></div>
+</div><script>
+    (() => {
+        const byId = id => document.getElementById(id);
+        const rows = byId('deskRows'), error = byId('deskError');
+        let page = 0, generation = 0;
+        function cell(tr, text) { const td = tr.insertCell(); td.textContent = text; return td; }
+        function button(td, text, action) {
+            const b = document.createElement('button'); b.type = 'button';
+            b.className = 'btn btn-primary btn-sm ml-1'; b.textContent = text;
+            b.onclick = () => action(b); td.append(b); return b;
+        }
+        async function submit(b, url, body, message) {
+            if (b.disabled) return;
+            b.disabled = true; error.textContent = '';
+            try { await api('POST', url, body); toast(message); await load(); }
+            catch (e) { if (!e.shown) error.textContent = e.message; }
+            finally { b.disabled = false; }
+        }
+        function render(r) {
+            const tr = rows.insertRow();
+            for (const value of [r.bookingCode, r.guestName, r.roomNumber, r.arrival, r.departure])
+                cell(tr, value);
+            cell(tr, r.inHouse ? (r.unpaid ? '투숙 중 · 미정산' : '투숙 중') :
+                (r.vacant ? '입실 가능' : '객실 준비 중'));
+            const td = cell(tr, '');
+            const url = '/api/reservations/' + r.id;
+            if (!r.inHouse) {
+                const label = document.createElement('label'); label.textContent = '키 번호 ';
+                const star = document.createElement('span'); star.className = 'text-danger'; star.textContent = '* ';
+                const key = document.createElement('input'); key.maxLength = 50; key.required = true;
+                key.disabled = !r.vacant; key.size = 10; label.append(star, key); td.append(label);
+                const b = button(td, '체크인', btn => {
+                    key.setCustomValidity(key.value.trim() ? '' : '키 번호를 입력해 주세요.');
+                    if (key.reportValidity())
+                        submit(btn, url + '/check-in', {keyCode: key.value.trim()}, '체크인했습니다.');
+                });
+                b.disabled = !r.vacant;
+            } else {
+                const b = button(td, '체크아웃', btn => {
+                    if (window.confirm(r.guestName + ' 님의 체크아웃을 처리할까요?'))
+                        submit(btn, url + '/check-out', undefined, '체크아웃했습니다.');
+                });
+                b.disabled = r.unpaid;
+                if (r.unpaid) {
+                    const a = document.createElement('a'); a.href = '/admin/additional-charges';
+                    a.target = '_blank'; a.rel = 'noopener'; a.className = 'ml-2';
+                    a.textContent = '추가 요금 정산 (새 창)'; td.append(a);
+                }
+            }
+        }
+        async function load() {
+            const seq = ++generation;
+            byId('prev').disabled = byId('next').disabled = true;
+            error.textContent = '';
+            try {
+                const data = await api('GET', '/api/reservations/check-in-out?page=' + page);
+                if (seq !== generation) return;
+                if (!data.content.length && page > 0) { page--; return load(); }
+                rows.replaceChildren();
+                data.content.forEach(render);
+                if (!data.content.length) {
+                    const td = cell(rows.insertRow(), '조회된 데이터가 없습니다');
+                    td.colSpan = 7; td.className = 'text-center';
+                }
+                byId('pages').textContent = data.totalPages ? (page + 1) + ' / ' + data.totalPages : '0건';
+                byId('prev').disabled = page === 0; byId('next').disabled = page + 1 >= data.totalPages;
+            } catch (e) {
+                if (seq === generation) { rows.replaceChildren(); if (!e.shown) error.textContent = e.message; }
+            }
+        }
+        byId('prev').onclick = () => { page--; load(); };
+        byId('next').onclick = () => { page++; load(); };
+        byId('again').onclick = load;
+        window.addEventListener('focus', () => { if (!document.activeElement?.matches('input')) load(); });
+        document.addEventListener('DOMContentLoaded', load);
+    })();
+</script></section></body></html>

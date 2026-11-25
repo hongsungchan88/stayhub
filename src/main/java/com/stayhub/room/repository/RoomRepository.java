@@ -20,6 +20,9 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
 	/** 같은 객실 번호가 이미 있는지. (등록할 때) */
 	boolean existsByRoomNumber(String roomNumber);
 
+	/** 객실 번호로 객실 한 건을 조회합니다. */
+	Optional<Room> findByRoomNumber(String roomNumber);
+
 	/** 나 말고 같은 객실 번호를 쓰는 객실이 있는지. (수정할 때 — 자기 번호 그대로 두는 건 허용) */
 	boolean existsByRoomNumberAndIdNot(String roomNumber, Long id);
 
