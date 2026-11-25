@@ -1,0 +1,98 @@
+/*
+ * 게스트 화면 공통 모양 (디자인 D — 예약 중심 모던). guest/layout.html 이 Bootstrap 다음에 불러옵니다.
+ *
+ * Bootstrap 4.6.1 클래스(btn-primary, card, form-control, alert, nav-pills 등)를 덮어쓰므로
+ * 게스트 화면은 Bootstrap 클래스만 써도 같은 톤이 됩니다. 관리자 화면에는 적용되지 않습니다.
+ * guest-* 는 여기서 새로 만든 클래스입니다.
+ */
+
+:root {
+  --guest-blue: #185FA5;
+  --guest-blue-dark: #0C447C;
+  --guest-blue-light: #E6F1FB;
+  --guest-text: #2C2C2A;
+  --guest-text-sub: #5F5E5A;
+  --guest-border: #E3E6EA;
+  --guest-shadow: 0 4px 16px rgba(12, 68, 124, .08);
+}
+
+/* ---------- 바탕·글자 ---------- */
+body {
+  background: #fff;
+  color: var(--guest-text);
+  font-family: -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+h1, h2, h3, .h1, .h3, .h5 { font-weight: 700; }
+a { color: var(--guest-blue); }
+a:hover { color: var(--guest-blue-dark); }
+.text-muted { color: var(--guest-text-sub) !important; }
+.text-primary { color: var(--guest-blue) !important; }
+
+/* ---------- 상단 메뉴 ---------- */
+.navbar-light .navbar-brand, .navbar-light .navbar-brand:hover { color: var(--guest-blue); }
+.navbar-light .navbar-nav .nav-link { color: var(--guest-text-sub); }
+.navbar-light .navbar-nav .nav-link:hover { color: var(--guest-blue-dark); }
+.navbar-light .navbar-nav .active > .nav-link { color: var(--guest-blue); font-weight: 700; }
+.navbar-light .navbar-nav .nav-link.disabled { color: #767570; }
+
+/* ---------- 카드·버튼·입력칸·안내 ---------- */
+.card { border-color: var(--guest-border); border-radius: 12px; }
+
+.btn { border-radius: 8px; }
+.btn-primary { background-color: var(--guest-blue); border-color: var(--guest-blue); }
+.btn-primary:hover, .btn-primary:focus,
+.btn-primary:not(:disabled):not(.disabled):active { background-color: var(--guest-blue-dark); border-color: var(--guest-blue-dark); }
+/* 잠긴 버튼도 글자("예약 중…")가 읽히도록 흐리게 하지 않습니다 */
+.btn-primary:disabled { opacity: 1; background-color: #4B6F92; border-color: #4B6F92; cursor: progress; }
+.btn-outline-primary { color: var(--guest-blue); border-color: var(--guest-blue); }
+.btn-outline-primary:hover,
+.btn-outline-primary:not(:disabled):not(.disabled):active { background-color: var(--guest-blue); border-color: var(--guest-blue); }
+.btn-link { color: var(--guest-blue); }
+.btn-link:hover { color: var(--guest-blue-dark); }
+.btn:focus, .btn-primary:focus, .btn-outline-primary:focus,
+.btn-primary:not(:disabled):not(.disabled):active:focus,
+.btn-outline-primary:not(:disabled):not(.disabled):active:focus { box-shadow: 0 0 0 3px rgba(24, 95, 165, .35); }
+
+.form-group label { font-size: .875rem; font-weight: 700; }
+.form-control { border-color: #C9CED4; border-radius: 8px; color: var(--guest-text); }
+.form-control:focus { border-color: var(--guest-blue); color: var(--guest-text); box-shadow: 0 0 0 3px rgba(24, 95, 165, .2); }
+.form-control.is-invalid { border-color: #dc3545; }
+
+.alert { border: 0; border-radius: 12px; }
+.alert-secondary { background: var(--guest-blue-light); color: var(--guest-text); }
+.badge-secondary { background: var(--guest-blue-light); color: var(--guest-blue-dark); padding: .4em .7em; border-radius: 8px; }
+
+/* ---------- 알약 탭 ---------- */
+.nav-pills { margin-left: -.25rem; margin-right: -.25rem; }
+.nav-pills .nav-link { margin: .25rem; padding: .4rem 1.1rem; border: 1px solid var(--guest-border); border-radius: 999px; background: #fff; color: var(--guest-text-sub); }
+.nav-pills .nav-link:hover { background: var(--guest-blue-light); color: var(--guest-blue-dark); }
+.nav-pills .nav-link:focus { outline: 0; box-shadow: 0 0 0 3px rgba(24, 95, 165, .35); }
+.nav-pills .nav-link.active { border-color: var(--guest-blue); background: var(--guest-blue); color: #fff; }
+
+/* ---------- 소개 화면 히어로 + 겹쳐 올라오는 검색 카드 ---------- */
+.guest-hero { position: relative; display: flex; align-items: center; justify-content: center; min-height: 340px; padding: 3rem 1.5rem 6rem; border-radius: 12px; overflow: hidden; background: var(--guest-blue-light); text-align: center; }
+.guest-hero img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+.guest-hero h1 { position: relative; margin: 0; font-size: 2.5rem; }
+.guest-hero-photo::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0, 0, 0, .55); }
+.guest-hero-photo h1 { z-index: 1; color: #fff; }
+.guest-search { position: relative; z-index: 2; margin: -4rem 1.5rem 2.5rem; box-shadow: var(--guest-shadow); }
+
+.guest-chip { display: inline-block; margin: 0 .5rem .5rem 0; padding: .5rem 1rem; border-radius: 999px; background: var(--guest-blue-light); color: var(--guest-blue-dark); }
+.guest-photo { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 12px; }
+
+/* ---------- 예약 단계 ---------- */
+.guest-steps { display: flex; margin: 0 0 1.5rem; padding: 0; list-style: none; }
+.guest-steps li { flex: 1; padding: .6rem .25rem; border-bottom: 3px solid var(--guest-border); color: var(--guest-text-sub); text-align: center; }
+.guest-steps li[aria-current] { border-color: var(--guest-blue); color: var(--guest-blue); font-weight: 700; }
+
+/* ---------- 불러오는 중 자리 표시 ---------- */
+.guest-skeleton { border-radius: 12px; background: #ECEEF0; }
+
+@media (max-width: 767.98px) {
+  .guest-hero { min-height: 240px; padding: 2rem 1rem 5rem; }
+  .guest-hero h1 { font-size: 1.75rem; }
+  .guest-search { margin: -3.5rem .75rem 2rem; }
+  .guest-steps li { font-size: .875rem; }
+}

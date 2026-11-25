@@ -26,12 +26,14 @@
     <!-- 버전 고정. 관리자 레이아웃(admin-lte@3.2.0)이 쓰는 버전과 같습니다. -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.1/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.4/css/all.min.css">
+    <!-- 게스트 화면 공통 모양. Bootstrap 을 덮어쓰므로 Bootstrap 다음에 불러옵니다. -->
+    <link rel="stylesheet" th:href="@{/css/guest.css}">
     <!-- 화면 본문의 <script> 가 바로 쓸 수 있도록 head 에서 먼저 불러옵니다. stayhub.js 는 jQuery 가 필요합니다. -->
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.1/dist/js/bootstrap.bundle.min.js"></script>
     <script th:src="@{/js/stayhub.js}"></script>
 </head>
-<body class="bg-light d-flex flex-column min-vh-100">
+<body class="d-flex flex-column min-vh-100">
 
 <nav class="navbar navbar-expand-md navbar-light bg-white border-bottom">
     <div class="container">
