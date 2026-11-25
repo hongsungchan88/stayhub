@@ -406,7 +406,6 @@ public class ReservationService {
 		return getDetail(reservation.getId());
 	}
 
-	/** 총괄의 상태 전이 규칙을 사용합니다. 업무별 추가 연동은 이후 구현합니다. */
 	/**
 	 * 예약 상태 변경의 공통 진입점.
 	 * 취소는 환불까지 같은 트랜잭션에서 처리합니다.
