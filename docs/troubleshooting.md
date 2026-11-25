@@ -175,3 +175,31 @@ git push -u origin feature-{코드}-{작업명}
 GitHub는 비밀번호로 push하는 걸 막아두었습니다.
 IntelliJ에서 Settings → Version Control → GitHub → `+` → **Log In via GitHub**로
 계정을 연결하면 해결됩니다.
+
+## PR 테스트(CI)
+
+PR을 올리면 `gradle-test`라는 자동 테스트가 돕니다. 통과해야 머지할 수 있습니다.
+
+### PR에 빨간 X(gradle-test 실패)가 떴음
+1. PR의 **Checks** 탭 → **gradle-test** → 빨간 X가 붙은 단계를 펼치세요. 보통 **테스트** 단계입니다.
+   실패한 테스트 이름과 메시지가 나옵니다.
+2. 더 자세한 결과는 같은 실행의 **Summary** 화면 맨 아래 **Artifacts**에 있습니다.
+   **test-report**를 내려받아 압축을 풀고 `index.html`을 여세요. 7일 동안 보관됩니다.
+3. 내 PC에서 같은 테스트를 돌려 같은 실패가 나는지 보세요. (Windows 명령 프롬프트에서는 `gradlew test`)
+
+```
+./gradlew test
+```
+
+4. 고쳐서 push하면 테스트가 자동으로 다시 돕니다.
+
+### 노란 점(대기 중)에서 안 넘어감
+몇 분 기다리세요. MySQL 준비까지 포함해서 보통 몇 분 걸립니다.
+기다리는 중에 새로 push하면 이전 실행은 자동으로 취소되고 새로 시작합니다.
+
+### `This branch is out-of-date with the base branch`
+**[Update branch]** 를 누르세요. 테스트가 다시 돌고, 통과하면 머지할 수 있습니다.
+충돌(conflicts)이 난다고 나오면 직접 고치지 말고 총괄에게 연락하세요.
+
+### 30분 넘게 막히면
+총괄에게 연락하세요. ① 실행한 명령어 ② 에러 메시지 전문(스크린샷보다 텍스트) ③ `git status` 출력을 같이 보내주세요.
