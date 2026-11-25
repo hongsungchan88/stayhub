@@ -38,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
  * <p><b>날짜 주의</b>
  * <br>예약·결제의 {@code created_at} 은 저장할 때 자동으로 "지금"이 들어가서 지난 날짜로 만들 수 없습니다.
  * 그래서 예약 건수·매출은 오늘 기준으로 확인하고, 증감률 계산식은 {@link StatisticsService#growthRate} 로 따로 확인합니다.
- * 투숙 날짜(check_in·check_out)는 자유롭게 정할 수 있어서 가동률은 30일 뒤 날짜로 확인합니다.
+ * 투숙 날짜(check_in·check_out)는 자유롭게 정할 수 있어서 상태별 가동률은 오늘부터 3일간 확인합니다.
  *
  * <p>예약은 반드시 {@link ReservationService#create} 로 만듭니다(겹침 검사·동시 예약 차단이 서비스에만 있음).
  * 채널 1번 "직접 예약"·2번 "기타 채널" 은 data.sql 로 들어가 있습니다.
@@ -82,14 +82,20 @@ class StatisticsServiceTest {
 	@Test
 	@DisplayName("가동률: 투숙 중인 CONFIRMED·CHECKED_IN 만 세고, CANCELLED·NOSHOW 는 빼고, 날짜별로 객실 수 ÷ 전체 객실 수")
 	void occupancyCountsOnlySoldStatuses() {
-		LocalDate base = TODAY.plusDays(30);
-		reserve(room1, null, base, base.plusDays(2));                                   // base, base+1 투숙 (CONFIRMED)
-		Reservation checkedIn = reserve(room2, null, base, base.plusDays(1));           // base 투숙
-		reservationService.changeStatus(checkedIn.getId(), ReservationStatus.CHECKED_IN);
-		Reservation cancelled = reserve(room2, null, base.plusDays(1), base.plusDays(2)); // 취소 → 안 셈
-		reservationService.changeStatus(cancelled.getId(), ReservationStatus.CANCELLED);
-		Reservation noShow = reserve(room2, null, base.plusDays(2), base.plusDays(3));     // 노쇼 → 안 셈
+		LocalDate base = TODAY;
+
+// 오늘 체크인 예정인 예약을 먼저 노쇼 처리합니다.
+		Reservation noShow = reserve(room2, null, base, base.plusDays(3));
 		reservationService.changeStatus(noShow.getId(), ReservationStatus.NOSHOW);
+
+// 노쇼 처리된 객실은 같은 날짜에 다시 예약할 수 있습니다.
+		reserve(room1, null, base, base.plusDays(2));
+		Reservation checkedIn = reserve(room2, null, base, base.plusDays(1));
+		reservationService.changeStatus(checkedIn.getId(), ReservationStatus.CHECKED_IN);
+
+// 내일 체크인 예정인 예약은 오늘 취소할 수 있습니다.
+		Reservation cancelled = reserve(room2, null, base.plusDays(1), base.plusDays(2));
+		reservationService.changeStatus(cancelled.getId(), ReservationStatus.CANCELLED);
 
 		OccupancyResponse response = statisticsService.getOccupancy(base, base.plusDays(2), StatisticsUnit.DAY);
 
