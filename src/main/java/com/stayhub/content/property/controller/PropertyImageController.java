@@ -7,6 +7,7 @@ import com.stayhub.content.property.dto.PropertyImageResponse;
 import com.stayhub.content.property.dto.PropertyImageUpdateRequest;
 import com.stayhub.content.property.service.PropertyImageService;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,10 +25,10 @@ import org.springframework.web.bind.annotation.RestController;
  * <pre>
  * GET    /api/property-images?page=0     목록 (page 는 생략 가능)
  * GET    /api/property-images/{id}       상세
- * POST   /api/property-images            등록
+ * POST   /api/property-images            등록 (최대 10장)
  * PUT    /api/property-images/{id}       수정
+ * DELETE /api/property-images/{id}       삭제 (행을 실제로 지움, 게시 중 마지막 1장은 불가 — 총괄 결정 2026-11-25)
  * </pre>
- * 삭제 기능은 없습니다(유형 ③).
  */
 @RestController
 @RequestMapping("/api/property-images")
@@ -62,5 +63,12 @@ public class PropertyImageController {
 			@Valid @RequestBody PropertyImageUpdateRequest request
 	) {
 		return ApiResponse.success(propertyImageService.update(id, request));
+	}
+
+	@DeleteMapping("/{id}")
+	public ApiResponse<Void> delete(@PathVariable Long id) {
+		propertyImageService.delete(id);
+		// 저장된 파일 삭제는 업로드 API 와 함께 추가합니다(공통 설정 PR 머지 후).
+		return ApiResponse.success(null);
 	}
 }

@@ -80,8 +80,8 @@ public class PasswordResetService {
 		emailVerificationRepository.save(
 				EmailVerification.create(user.getEmail(), token, VerificationType.PASSWORD_RESET, expiresAt));
 
-		// 실제 메일 대신 서버 로그에 찍습니다(총괄 공지). 이 token 으로 POST /api/password-reset/confirm 을 부르면 됩니다.
-		log.info("[비밀번호 재설정 링크] email={}, token={}, expiresAt={}", user.getEmail(), token, expiresAt);
+		// 실제 메일 대신 서버 로그에 찍습니다(총괄 공지). link 를 주소창(localhost:8080 뒤)에 붙여 넣으면 새 비밀번호 화면(SCR-ACC-03)이 열립니다.
+		log.info("[비밀번호 재설정 링크] email={}, link=/password-reset?token={}, expiresAt={}", user.getEmail(), token, expiresAt);
 	}
 
 	/**
