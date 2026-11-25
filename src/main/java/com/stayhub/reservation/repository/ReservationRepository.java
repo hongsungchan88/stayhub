@@ -4,6 +4,7 @@ import com.stayhub.reservation.entity.Reservation;
 import com.stayhub.reservation.entity.ReservationStatus;
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -36,6 +37,11 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
 			@Param("checkInDate") LocalDate checkInDate,
 			@Param("checkOutDate") LocalDate checkOutDate,
 			@Param("excluded") Collection<ReservationStatus> excluded
+	);
+
+	/** 게스트 확인용: 예약번호와 연락처가 모두 일치하는 한 건을 조회합니다. */
+	Optional<Reservation> findByReservationCodeIgnoreCaseAndGuestPhone(
+			String reservationCode, String guestPhone
 	);
 
 	/** 예약자 이름으로 부분 검색합니다. */
