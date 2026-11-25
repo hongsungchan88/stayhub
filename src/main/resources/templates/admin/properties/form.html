@@ -171,12 +171,21 @@
           <div class="col-6 col-md-4 mb-3">
             <div class="border rounded position-relative">
               <img src="${esc(image.filePath)}" alt="숙소 사진" class="w-100 rounded-top"
-                   style="height: 140px; object-fit: cover; background: #f4f6f9">
+                   style="height: 140px; object-fit: cover; background: #f4f6f9" onerror="showBrokenImage(this)">
               <div class="p-1 text-right">
                 <button type="button" class="btn btn-outline-danger btn-xs" onclick="removeImage(${image.id})">삭제</button>
               </div>
             </div>
           </div>`).join('') || '<div class="col text-center text-muted py-5">등록된 사진이 없습니다.</div>';
+      }
+
+      /** 파일이 없어 사진을 못 그릴 때(예: 업로드 폴더에서 파일이 지워짐) 깨진 그림 대신 회색 칸으로. [삭제] 는 그대로 쓸 수 있습니다. */
+      function showBrokenImage(img) {
+        const box = document.createElement('div');
+        box.className = 'd-flex align-items-center justify-content-center text-muted small rounded-top';
+        box.style.cssText = 'height: 140px; background: #f4f6f9';
+        box.textContent = '사진을 불러올 수 없습니다';
+        img.replaceWith(box);
       }
 
       /** 파일 고르기 → 하나씩 확인·업로드. 하나라도 거부되면 거기서 멈추고 알림. */
@@ -215,7 +224,7 @@
           return 'jpg, png 파일만 업로드할 수 있습니다.';
         }
         if (file.size > MAX_FILE_SIZE) {
-          return '10MB 이하의 파일만 업로드할 수 있습니다.';
+          return '파일은 10MB 이하만 올릴 수 있습니다.'; // 서버(GlobalExceptionHandler) 문구와 같게
         }
         return null;
       }
@@ -233,7 +242,6 @@
         }
         if (response.status === 401) return stop(() => location.href = '/login?expired');
         if (response.status === 403) return stop(() => location.href = '/403');
-        if (response.status === 413) throw new Error('10MB 이하의 파일만 업로드할 수 있습니다.');
         if (response.status >= 500) return stop(() => alert(SERVER_ERROR_MESSAGE));
 
         let json;
