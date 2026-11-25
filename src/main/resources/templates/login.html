@@ -6,6 +6,7 @@
     POST /api/auth/login → 성공하면 /admin 으로 이동.
     실패·잠금 메시지는 서버가 보낸 문장을 폼 위에 그대로 보여줍니다.
     /login?expired 로 들어오면(세션 만료·로그인 안 하고 /admin 접근) 안내 문구를 보여줍니다.
+    [비밀번호 찾기] -> /password-reset (SCR-ACC-03, 화면 흐름도 FLW-01)
 
   따라 만들 때 바꿀 곳
     없습니다. 회원가입(SCR-ACC-02)·비밀번호 찾기(SCR-ACC-03)처럼 로그인 전 화면을 만들 때 모양만 참고하세요.
@@ -44,6 +45,9 @@
                 </div>
                 <button type="submit" class="btn btn-primary btn-block">로그인</button>
             </form>
+            <p class="mt-3 mb-0 text-center">
+                <a th:href="@{/password-reset}">비밀번호 찾기</a>
+            </p>
         </div>
     </div>
 </div>
