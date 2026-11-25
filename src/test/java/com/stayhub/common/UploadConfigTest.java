@@ -30,6 +30,8 @@ import org.springframework.util.MultiValueMap;
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 class UploadConfigTest {
 
+	private static final int MB = 1024 * 1024;
+
 	@TempDir
 	static Path tempDir;
 
@@ -60,25 +62,25 @@ class UploadConfigTest {
 				.isEqualTo(HttpStatus.NOT_FOUND);
 	}
 
-	@ParameterizedTest(name = "{0}MB 업로드는 400 과 안내 문구")
-	@ValueSource(ints = {11, 20})
-	void tooLargeUploadIs400(int megabytes) {
+	@ParameterizedTest(name = "{0}바이트 업로드는 400 과 안내 문구")
+	@ValueSource(ints = {10 * MB + 1, 11 * MB, 20 * MB})
+	void tooLargeUploadIs400(int bytes) {
 		// 크기 확인은 컨트롤러를 찾기 전에 하므로 아무 주소로나 보내도 됩니다.
-		ResponseEntity<String> response = upload(megabytes);
+		ResponseEntity<String> response = upload(bytes);
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 		assertThat(response.getBody()).contains("\"success\":false", "파일은 10MB 이하만 올릴 수 있습니다.");
 	}
 
 	@Test
-	@DisplayName("9MB 업로드는 크기 제한에 걸리지 않는다")
-	void smallUploadPassesSizeCheck() {
-		assertThat(upload(9).getBody()).doesNotContain("10MB");
+	@DisplayName("정확히 10MB 인 파일은 크기 제한에 걸리지 않는다")
+	void exactly10MbPassesSizeCheck() {
+		assertThat(upload(10 * MB).getBody()).doesNotContain("10MB");
 	}
 
-	private ResponseEntity<String> upload(int megabytes) {
+	private ResponseEntity<String> upload(int bytes) {
 		MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-		body.add("file", new ByteArrayResource(new byte[megabytes * 1024 * 1024]) {
+		body.add("file", new ByteArrayResource(new byte[bytes]) {
 			@Override
 			public String getFilename() {
 				return "big.jpg";

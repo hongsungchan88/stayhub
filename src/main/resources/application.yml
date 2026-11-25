@@ -26,7 +26,8 @@ spring:
     multipart:
       # 사진 업로드 크기 제한. 넘으면 GlobalExceptionHandler 가 400 으로 응답합니다.
       max-file-size: 10MB
-      max-request-size: 10MB
+      # 요청에는 파일 말고도 부가 정보가 붙으므로, 정확히 10MB 인 파일도 올릴 수 있게 1MB 여유를 둡니다.
+      max-request-size: 11MB
 
   jpa:
     hibernate:
