@@ -94,7 +94,7 @@ class AdminPageTest {
 	void notYetBuiltMenuShowsReady() throws Exception {
 		MockHttpSession host = sessionOf(UserRole.HOST);
 		// 예시 주소는 아직 화면이 없는 메뉴. /admin/payments(SCR-PAY-01)·/admin/messages(SCR-COM-01) 가 생겨서 바꿈
-		mockMvc.perform(get("/admin/channel-sync-logs").session(host))
+		mockMvc.perform(get("/admin/channels").session(host))
 				.andExpect(status().isOk())
 				.andExpect(view().name("admin/ready"));
 		mockMvc.perform(get("/admin/guidebooks").session(host))
@@ -177,5 +177,22 @@ class AdminPageTest {
 		MockHttpSession session = new MockHttpSession();
 		session.setAttribute(LoginUser.SESSION_KEY, new LoginUser(1L, "tester", "테스트사용자", role));
 		return session;
+	}
+
+	@Test
+	@DisplayName("동기화 로그 화면과 API는 HOST만 접근할 수 있다")
+	void channelSyncLogsAreHostOnly() throws Exception {
+		mockMvc.perform(get("/admin/channel-sync-logs").session(sessionOf(UserRole.HOST)))
+				.andExpect(status().isOk())
+				.andExpect(view().name("admin/channel-sync-logs/list"));
+
+		mockMvc.perform(get("/api/channel-sync/logs").session(sessionOf(UserRole.HOST)))
+				.andExpect(status().isOk());
+
+		mockMvc.perform(get("/admin/channel-sync-logs").session(sessionOf(UserRole.FRONT)))
+				.andExpect(status().isForbidden());
+
+		mockMvc.perform(get("/api/channel-sync/logs").session(sessionOf(UserRole.FRONT)))
+				.andExpect(status().isForbidden());
 	}
 }
