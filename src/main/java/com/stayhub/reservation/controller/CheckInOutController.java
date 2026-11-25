@@ -25,10 +25,10 @@ public class CheckInOutController {
         return u.userId();
     }
 
+    /** 체크인·체크아웃 관리 화면을 엽니다. */
     @GetMapping("/admin/check-in-out")
-    public String desk(@SessionAttribute(name = LoginUser.SESSION_KEY, required = false) LoginUser u) {
-        if (u == null) return "redirect:/login";
-        return allowed(u) ? "admin/reservations/check-in-out" : "redirect:/403";
+    public String desk() {
+        return "admin/reservations/check-in-out";
     }
 
     @ResponseBody @GetMapping("/api/reservations/check-in-out")
