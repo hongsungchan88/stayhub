@@ -85,4 +85,11 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
 			@Param("checkOutDate") LocalDate checkOutDate,
 			@Param("excluded") Collection<ReservationStatus> excluded
 	);
+
+	/** 오늘 또는 과거에 체크인 예정이었던 확정 예약을 조회합니다. */
+	Page<Reservation> findByStatusAndCheckInDateLessThanEqual(
+			ReservationStatus status,
+			LocalDate checkInDate,
+			Pageable pageable
+	);
 }

@@ -5,11 +5,12 @@
   이 화면이 하는 일
     GET /api/public/guidebooks?category= 로 안내(ACTIVE 만, 노출 순서대로)를 불러와 카드로 그립니다.
     탭(전체·주차·와이파이·체크인·기타)을 누르면 그 카테고리만 다시 불러옵니다. 비었으면 "등록된 안내가 없습니다".
+    불러오는 동안은 "불러오는 중…" 을 보여 줍니다. 탭을 빠르게 바꾸면 마지막에 누른 탭의 결과만 그립니다.
 
   따라 만들 때 바꿀 곳 (★ 로 검색)
     - layout(...) 의 화면 제목과 현재 메뉴
     - 탭 버튼 — 내 API 의 필터 값에 맞게. 필터가 없으면 탭 영역과 load() 의 category 파라미터 삭제
-    - <script> 맨 위 상수 2개 (API 주소, 카테고리 이름표)와 카드 한 장 모양(card)
+    - <script> 맨 위 상수 3개 (API 주소, 카테고리 이름표·아이콘)와 카드 한 장 모양(card)
     - 사용자가 입력한 글자는 꼭 esc() 로 감싸기
 */-->
 <html xmlns:th="http://www.thymeleaf.org"
@@ -19,12 +20,12 @@
     <h1 class="h3 mb-4">가이드북</h1>
 
     <!--/* ★ 바꿀 곳: 탭. data-category 는 API 의 category 값 (전체는 빈 값) */-->
-    <ul class="nav nav-tabs mb-4" role="tablist" aria-label="카테고리">
-        <li class="nav-item"><button type="button" class="nav-link btn btn-link active" role="tab" aria-selected="true" data-category="">전체</button></li>
-        <li class="nav-item"><button type="button" class="nav-link btn btn-link" role="tab" aria-selected="false" data-category="PARKING">주차</button></li>
-        <li class="nav-item"><button type="button" class="nav-link btn btn-link" role="tab" aria-selected="false" data-category="WIFI">와이파이</button></li>
-        <li class="nav-item"><button type="button" class="nav-link btn btn-link" role="tab" aria-selected="false" data-category="CHECKIN">체크인</button></li>
-        <li class="nav-item"><button type="button" class="nav-link btn btn-link" role="tab" aria-selected="false" data-category="ETC">기타</button></li>
+    <ul class="nav nav-pills mb-4" role="tablist" aria-label="카테고리">
+        <li class="nav-item"><button type="button" class="nav-link active" role="tab" aria-selected="true" data-category="">전체</button></li>
+        <li class="nav-item"><button type="button" class="nav-link" role="tab" aria-selected="false" data-category="PARKING">주차</button></li>
+        <li class="nav-item"><button type="button" class="nav-link" role="tab" aria-selected="false" data-category="WIFI">와이파이</button></li>
+        <li class="nav-item"><button type="button" class="nav-link" role="tab" aria-selected="false" data-category="CHECKIN">체크인</button></li>
+        <li class="nav-item"><button type="button" class="nav-link" role="tab" aria-selected="false" data-category="ETC">기타</button></li>
     </ul>
 
     <div id="cards" role="tabpanel"></div>
@@ -32,23 +33,31 @@
     <script>
       const API_URL = '/api/public/guidebooks'; // ★ 바꿀 곳
       const CATEGORY_LABEL = { PARKING: '주차', WIFI: '와이파이', CHECKIN: '체크인', ETC: '기타' }; // ★ 바꿀 곳
+      const CATEGORY_ICON = { PARKING: 'fa-parking', WIFI: 'fa-wifi', CHECKIN: 'fa-key', ETC: 'fa-info-circle' }; // ★ 바꿀 곳
+      let lastRequest = 0;
 
       async function load(category) {
         const cards = document.getElementById('cards');
+        const request = ++lastRequest;
+        cards.setAttribute('aria-busy', 'true');
+        cards.innerHTML = '<p class="text-muted text-center py-5" role="status">불러오는 중…</p>';
         try {
           const guidebooks = await api('GET', category ? `${API_URL}?category=${category}` : API_URL);
+          if (request !== lastRequest) return;
           cards.innerHTML = guidebooks.length
             ? guidebooks.map(card).join('')
             : '<p class="text-muted text-center py-5">등록된 안내가 없습니다</p>';
         } catch (error) {
-          if (!error.shown) cards.innerHTML = `<div class="alert alert-danger">${esc(error.message)}</div>`;
+          if (request !== lastRequest) return;
+          cards.innerHTML = `<div class="alert alert-danger">${esc(error.message)}</div>`;
         }
+        cards.removeAttribute('aria-busy');
       }
 
       function card(g) { // ★ 바꿀 곳: 카드 한 장 모양
         return `<div class="card mb-3">
                   <div class="card-body">
-                    <span class="badge badge-secondary mb-2">${esc(CATEGORY_LABEL[g.category] || g.category)}</span>
+                    <span class="badge badge-secondary mb-2"><i class="fas ${CATEGORY_ICON[g.category] || 'fa-info-circle'} mr-1" aria-hidden="true"></i>${esc(CATEGORY_LABEL[g.category] || g.category)}</span>
                     <h2 class="h5 card-title">${esc(g.title)}</h2>
                     <p class="card-text mb-0">${esc(g.content).replace(/\n/g, '<br>')}</p>
                   </div>

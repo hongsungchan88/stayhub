@@ -3,13 +3,18 @@
   예약하기 SCR-GST-03 (/reserve) — 숙소 소개(intro.html)를 복사해 만든 게스트 화면.
 
   이 화면이 하는 일
-    ① 날짜·인원 → [빈 객실 찾기] → GET /api/public/rooms/available
-       빈 객실이 있으면 객실 카드(1박·총 가격), 없으면 "빈 객실이 없습니다" + 대체 날짜 버튼(누르면 그 날짜로 다시 조회)
+    맨 위에 단계(① 객실 선택 ② 예약자 정보 ③ 완료)를 보여 주고 현재 단계를 강조합니다.
+    ① 날짜·인원 → [빈 객실 조회] → GET /api/public/rooms/available
+       빈 객실이 있으면 객실 카드(최대 인원·1박·박수 포함 총 가격), 없으면 "빈 객실이 없습니다" + 대체 날짜 버튼(누르면 그 날짜로 다시 조회)
        조회 실패(서버·네트워크)면 오류 안내 + [다시 시도]
-    ② 객실 선택 → 이름·연락처 → [예약하기] → POST /api/public/reservations → 예약번호를 크게 보여 줌
+    ② 객실 선택 → 이름·연락처 → [예약하기] → POST /api/public/reservations → ③ 예약번호를 크게 + [예약번호 복사]·[처음으로]
        동시 예약 충돌(409)·"이미 예약된 객실" 이면 게스트용 문구를 보여 주고 빈 객실을 다시 조회
-    숙소 소개의 예약 위젯이 /reserve?checkIn=&checkOut=&guests= 로 보내면 들어오자마자 조회합니다.
-    결제는 1차에 없습니다 — "결제는 체크인 때 현장에서" 안내만.
+    요청 중에는 busy 로 잠급니다: 조회·예약이 겹치지 않고, 두 번 눌러도 예약은 한 번만 보냅니다.
+      예약이 끝나면 풀지 않으므로 완료 화면(예약번호)이 다른 응답에 덮이지 않습니다.
+    체크인을 바꾸면 체크아웃은 체크인 다음 날부터 고를 수 있고, 그보다 이르면 자동으로 맞춥니다.
+    날짜는 화면에만 "12월 1일(화)" 모양으로 보여 주고, API 로는 yyyy-MM-dd 를 보냅니다.
+    숙소 소개의 검색 카드가 /reserve?checkIn=&checkOut=&guests= 로 보내면 들어오자마자 조회합니다.
+    결제는 1차에 없습니다 — "결제는 체크인 때 현장에서" 안내만(예약자 정보 단계에 한 번).
   사용자가 입력한 값·서버 값은 모두 esc() 로 감쌉니다. 오류는 toast 대신 화면 안에 보여 줍니다.
 */-->
 <html xmlns:th="http://www.thymeleaf.org"
@@ -18,8 +23,14 @@
 <section>
     <h1 class="h3 mb-4">예약하기</h1>
 
+    <ol class="guest-steps" aria-label="예약 단계">
+        <li aria-current="step">① 객실 선택</li>
+        <li>② 예약자 정보</li>
+        <li>③ 완료</li>
+    </ol>
+
     <form id="searchForm" class="card mb-4" novalidate>
-        <div class="card-body">
+        <div class="card-body pb-2">
             <div class="form-row align-items-end">
                 <div class="col-md-4 form-group">
                     <label for="checkIn">체크인</label>
@@ -34,7 +45,7 @@
                     <input type="number" id="guests" name="guests" class="form-control" min="1" value="2" required>
                 </div>
                 <div class="col-md-2 form-group">
-                    <button type="submit" class="btn btn-primary btn-block">빈 객실 찾기</button>
+                    <button type="submit" id="searchButton" class="btn btn-primary btn-block text-nowrap px-1">빈 객실 조회</button>
                 </div>
             </div>
         </div>
@@ -45,8 +56,16 @@
         <button type="button" id="retry" class="btn btn-sm btn-outline-danger ml-2 d-none">다시 시도</button>
     </div>
 
+    <div id="loading" class="d-none" role="status">
+        <p class="text-muted">불러오는 중…</p>
+        <div class="row" aria-hidden="true">
+            <div class="col-md-6 col-lg-4 mb-3"><div class="guest-skeleton" style="height: 200px"></div></div>
+            <div class="col-md-6 col-lg-4 mb-3"><div class="guest-skeleton" style="height: 200px"></div></div>
+            <div class="col-md-6 col-lg-4 mb-3"><div class="guest-skeleton" style="height: 200px"></div></div>
+        </div>
+    </div>
+
     <div id="results" class="d-none">
-        <p class="text-muted small"><i class="fas fa-info-circle mr-1" aria-hidden="true"></i>결제는 체크인 때 현장에서 합니다.</p>
         <div id="rooms" class="row"></div>
     </div>
 
@@ -72,18 +91,20 @@
                        placeholder="010-0000-0000" autocomplete="tel">
             </div>
             <p class="text-muted small">결제는 체크인 때 현장에서 합니다.</p>
-            <button type="submit" class="btn btn-primary">예약하기</button>
+            <button type="submit" id="bookButton" class="btn btn-primary">예약하기</button>
             <button type="button" id="backToRooms" class="btn btn-link">다른 객실 선택</button>
         </div>
     </form>
 
     <div id="done" class="card mb-4 d-none">
         <div class="card-body text-center py-5">
-            <p class="h5 mb-3">예약이 완료되었습니다.</p>
+            <h2 id="doneTitle" class="h5 mb-3" tabindex="-1">예약이 완료되었습니다.</h2>
             <p class="mb-1 text-muted">예약번호</p>
-            <p id="reservationCode" class="h1 font-weight-bold mb-4" style="word-break: break-all"></p>
+            <p id="reservationCode" class="h1 text-primary mb-3" style="word-break: break-all"></p>
+            <p><button type="button" id="copyCode" class="btn btn-outline-primary btn-sm">예약번호 복사</button></p>
             <p id="doneDetail"></p>
-            <p class="text-muted small mb-0">예약번호와 연락처로 예약을 조회할 수 있습니다(준비 중).<br>결제는 체크인 때 현장에서 합니다.</p>
+            <p class="text-muted small">예약번호와 연락처로 예약을 조회할 수 있습니다(준비 중).</p>
+            <a th:href="@{/}" class="btn btn-primary">처음으로</a>
         </div>
     </div>
 
@@ -96,9 +117,43 @@
       const bookForm = document.getElementById('bookForm');
       let search = null;   // 마지막으로 조회한 { checkIn, checkOut, guests }
       let selected = null; // 고른 객실
+      let busy = false;    // 조회·예약 요청 중. 예약이 끝나면 true 로 남겨 완료 화면을 지킵니다
 
       const show = (id, visible) => document.getElementById(id).classList.toggle('d-none', !visible);
       const nights = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
+      const nextDay = date => {
+        const next = new Date(date + 'T00:00:00Z');
+        if (isNaN(next)) return ''; // 날짜를 지웠을 때
+        next.setUTCDate(next.getUTCDate() + 1);
+        return next.toISOString().slice(0, 10);
+      };
+
+      /** "2026-12-01" → "12월 1일(화)" */
+      function dayText(date) {
+        const d = new Date(date + 'T00:00:00Z');
+        return `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일(${'일월화수목금토'[d.getUTCDay()]})`;
+      }
+
+      function setStep(number) {
+        document.querySelectorAll('.guest-steps li').forEach((li, i) =>
+          i + 1 === number ? li.setAttribute('aria-current', 'step') : li.removeAttribute('aria-current'));
+      }
+
+      /** 요청 중 잠금. 누른 버튼은 글자를 바꾸고, 다른 버튼도 함께 잠급니다. 돌려주는 함수를 부르면 풀립니다. */
+      function lock(button, text) {
+        busy = true;
+        const label = button.textContent;
+        const buttons = ['searchButton', 'bookButton', 'backToRooms'].map(id => document.getElementById(id));
+        buttons.forEach(b => b.disabled = true);
+        button.textContent = text;
+        button.setAttribute('aria-busy', 'true');
+        return () => {
+          busy = false;
+          buttons.forEach(b => b.disabled = false);
+          button.textContent = label;
+          button.removeAttribute('aria-busy');
+        };
+      }
 
       function showAlert(message, type, retry) {
         const alert = document.getElementById('alert');
@@ -108,13 +163,18 @@
       }
 
       async function find(params, keepAlert) {
+        if (busy) return;
         search = params;
         searchForm.checkIn.value = params.checkIn;
         searchForm.checkOut.value = params.checkOut;
         searchForm.guests.value = params.guests;
+        limitCheckOut();
         history.replaceState(null, '', '/reserve?' + new URLSearchParams(params));
         if (!keepAlert) show('alert', false);
         ['results', 'empty', 'bookForm', 'done'].forEach(id => show(id, false));
+        setStep(1);
+        show('loading', true);
+        const unlock = lock(document.getElementById('searchButton'), '조회 중…');
 
         let result;
         try {
@@ -123,6 +183,9 @@
           // 서버·네트워크 오류는 재시도 버튼, 입력값 오류(400)는 메시지만 (CMS-008 예외 처리)
           showAlert(error.shown ? '빈 객실을 불러오지 못했습니다.' : error.message.replace(/^\w+: /, ''), 'danger', Boolean(error.shown));
           return;
+        } finally {
+          show('loading', false);
+          unlock();
         }
         render(result);
       }
@@ -132,12 +195,13 @@
           document.getElementById('rooms').innerHTML = result.rooms.map(room =>
             `<div class="col-md-6 col-lg-4 mb-3">
                <div class="card h-100">
-                 <div class="card-body">
+                 <div class="card-body d-flex flex-column">
                    <h2 class="h5">${esc(room.roomType)} <small class="text-muted">${esc(room.roomNumber)}호</small></h2>
                    <p class="mb-1">최대 ${esc(room.maxOccupancy)}명</p>
-                   <p class="mb-1 text-muted">1박 ${esc(formatMoney(room.pricePerNight))}</p>
-                   <p class="h5">총 ${esc(formatMoney(room.totalPrice))}</p>
-                   <button type="button" class="btn btn-outline-primary btn-block" data-room-id="${esc(room.roomId)}">이 객실 선택</button>
+                   <p class="mb-3 text-muted">1박 ${esc(formatMoney(room.pricePerNight))}</p>
+                   <p class="h5 mt-auto mb-3">${esc(nights(search.checkIn, search.checkOut))}박 총 ${esc(formatMoney(room.totalPrice))}</p>
+                   <button type="button" class="btn btn-primary btn-block" data-room-id="${esc(room.roomId)}"
+                           aria-label="${esc(room.roomType)} ${esc(room.roomNumber)}호 선택">선택</button>
                  </div>
                </div>
              </div>`).join('');
@@ -151,7 +215,7 @@
         alternatives.innerHTML = result.alternativeDates.length
           ? '<p class="text-muted">이 날짜에는 빈 객실이 있습니다.</p>' + result.alternativeDates.map(d =>
               `<button type="button" class="btn btn-outline-primary m-1" data-check-in="${esc(d.checkIn)}" data-check-out="${esc(d.checkOut)}">
-                 ${esc(d.checkIn)} ~ ${esc(d.checkOut)}</button>`).join('')
+                 ${esc(dayText(d.checkIn))} ~ ${esc(dayText(d.checkOut))}</button>`).join('')
           : '<p class="text-muted mb-0">2주 안에는 같은 일정으로 빈 객실이 없습니다. 다른 날짜를 선택해 주세요.</p>';
         alternatives.querySelectorAll('[data-check-in]').forEach(button => button.addEventListener('click', () =>
           find({ checkIn: button.dataset.checkIn, checkOut: button.dataset.checkOut, guests: search.guests })));
@@ -161,11 +225,12 @@
       function choose(room) {
         selected = room;
         document.getElementById('selected').innerHTML =
-          `<strong>${esc(room.roomType)} ${esc(room.roomNumber)}호</strong> · ${esc(search.checkIn)} ~ ${esc(search.checkOut)}
+          `<strong>${esc(room.roomType)} ${esc(room.roomNumber)}호</strong> · ${esc(dayText(search.checkIn))} ~ ${esc(dayText(search.checkOut))}
            (${esc(nights(search.checkIn, search.checkOut))}박) · ${esc(search.guests)}명 · 총 ${esc(formatMoney(room.totalPrice))}`;
         clearFormError(bookForm);
         show('results', false);
         show('bookForm', true);
+        setStep(2);
         bookForm.guestName.focus();
       }
 
@@ -180,15 +245,18 @@
 
       bookForm.addEventListener('submit', async event => {
         event.preventDefault();
+        if (busy) return;
         clearFormError(bookForm);
         const body = {
           roomId: selected.roomId, checkIn: search.checkIn, checkOut: search.checkOut, guestCount: Number(search.guests),
           guestName: bookForm.guestName.value.trim(), guestPhone: bookForm.guestPhone.value.trim(),
         };
+        const unlock = lock(document.getElementById('bookButton'), '예약 중…');
         let reservation;
         try {
           reservation = await api('POST', RESERVE_URL, body);
         } catch (error) {
+          unlock();
           if (error.status === 409 || /이미 예약된 객실/.test(error.message)) {
             // 관리자용 409 문구 대신 게스트 문구를 보여 주고, 빈 객실을 다시 조회
             showAlert(TAKEN_MESSAGE, 'warning', false);
@@ -196,20 +264,47 @@
             return;
           }
           showFormError(bookForm, error);
+          if (error.shown) { // 서버·네트워크 오류는 showFormError 가 건너뛰므로 폼 위에 남겨 둡니다
+            const top = bookForm.querySelector('[data-form-error]');
+            top.textContent = error.message;
+            top.classList.remove('d-none');
+          }
           return;
         }
+        unlock();
+        busy = true; // 이후에는 아무 요청도 완료 화면을 바꾸지 못합니다
 
         document.getElementById('reservationCode').textContent = reservation.reservationCode;
         document.getElementById('doneDetail').textContent =
-          `${reservation.roomNumber}호 · ${reservation.checkIn} ~ ${reservation.checkOut} · ${reservation.guestCount}명 · 총 ${formatMoney(reservation.totalPrice)}`;
+          `${reservation.roomNumber}호 · ${dayText(reservation.checkIn)} ~ ${dayText(reservation.checkOut)} · ${reservation.guestCount}명 · 총 ${formatMoney(reservation.totalPrice)}`;
         ['searchForm', 'alert', 'bookForm'].forEach(id => show(id, false));
         show('done', true);
+        setStep(3);
+        document.getElementById('doneTitle').focus();
       });
 
-      // 오늘 이전 날짜는 고를 수 없게. 숙소 소개 위젯에서 날짜를 담아 오면 바로 조회
+      document.getElementById('copyCode').addEventListener('click', async event => {
+        const button = event.currentTarget; // await 뒤에는 currentTarget 이 사라집니다
+        try {
+          await navigator.clipboard.writeText(document.getElementById('reservationCode').textContent);
+          button.textContent = '복사했습니다';
+        } catch (ignored) {
+          // 복사를 막은 브라우저. 예약번호가 화면에 있으니 조용히 넘어갑니다
+        }
+      });
+
+      // 오늘 이전 날짜는 고를 수 없게. 숙소 소개 검색 카드에서 날짜를 담아 오면 바로 조회
       const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
       searchForm.checkIn.min = today;
-      searchForm.checkOut.min = today;
+      function limitCheckOut() {
+        searchForm.checkOut.min = nextDay(searchForm.checkIn.value) || nextDay(today);
+      }
+      limitCheckOut();
+      searchForm.checkIn.addEventListener('change', () => {
+        limitCheckOut();
+        const checkOut = searchForm.checkOut;
+        if (checkOut.value && checkOut.value < checkOut.min) checkOut.value = checkOut.min;
+      });
       const query = new URLSearchParams(location.search);
       if (query.get('checkIn') && query.get('checkOut')) {
         find({ checkIn: query.get('checkIn'), checkOut: query.get('checkOut'), guests: query.get('guests') || '1' });

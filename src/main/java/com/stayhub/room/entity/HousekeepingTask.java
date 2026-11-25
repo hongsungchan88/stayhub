@@ -129,6 +129,14 @@ public class HousekeepingTask extends BaseEntity {
 		this.scheduledAt = scheduledAt;
 	}
 
+	/**
+	 * 미리 만들어 둔 청소 작업에 실제 체크아웃 시각을 적습니다.
+	 * 담당 스태프·배정 일시·재배정 여부는 미리 정한 값을 그대로 둡니다. (ROM-003 체크아웃 후 처리)
+	 */
+	public void recordCheckout(LocalDateTime checkoutTime) {
+		this.checkoutTime = checkoutTime;
+	}
+
 	/** 작업 상태를 바꿉니다. 완료로 바뀌면 완료 일시를 남깁니다. 순서 확인은 서비스에서 합니다. (ROM-003) */
 	public void changeStatus(HousekeepingTaskStatus newStatus) {
 		this.status = newStatus;

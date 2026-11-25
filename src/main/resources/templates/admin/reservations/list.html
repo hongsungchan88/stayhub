@@ -54,6 +54,12 @@
                       aria-live="polite"></span>
                 <a th:href="@{/admin/reservations/new}"
                    class="btn btn-primary btn-sm ml-auto">예약 등록</a>
+
+                <button type="button" id="openNoShowButton"
+                        class="btn btn-warning btn-sm ml-2"
+                        data-toggle="modal" data-target="#noShowModal">
+                    노쇼 처리
+                </button>
             </div>
             <div class="card-body table-responsive p-0">
                 <table class="table table-hover text-nowrap mb-0">
@@ -80,6 +86,68 @@
                 </table>
             </div>
             <div class="card-footer" id="pagination"></div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="noShowModal" tabindex="-1"
+         aria-labelledby="noShowModalTitle" aria-hidden="true"
+         data-backdrop="static" data-keyboard="false">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="noShowModalTitle">
+                        노쇼 대상 예약
+                    </h2>
+                    <button type="button" class="close no-show-close"
+                            data-dismiss="modal" aria-label="닫기">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="alert alert-danger d-none"
+                         id="noShowError" role="alert"></div>
+
+                    <p>
+                        체크인 예정일이 오늘이거나 이미 지났으며,
+                        아직 예약 확정 상태인 예약입니다.
+                        실제 미입실 여부를 확인한 뒤 처리하세요.
+                    </p>
+
+                    <p class="text-danger">
+                        노쇼 처리 시 환불하지 않으며,
+                        기존 결제 상태는 유지됩니다.
+                    </p>
+
+                    <p id="noShowCount" class="text-muted"
+                       aria-live="polite"></p>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover text-nowrap">
+                            <thead>
+                            <tr>
+                                <th scope="col">예약번호</th>
+                                <th scope="col">예약자</th>
+                                <th scope="col">연락처</th>
+                                <th scope="col">객실</th>
+                                <th scope="col">체크인</th>
+                                <th scope="col">체크아웃</th>
+                                <th scope="col">처리</th>
+                            </tr>
+                            </thead>
+                            <tbody id="noShowRows"></tbody>
+                        </table>
+                    </div>
+
+                    <div id="noShowPagination"></div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button"
+                            class="btn btn-secondary no-show-close"
+                            data-dismiss="modal">닫기</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -156,6 +224,148 @@
                 showError(error);
             }
         }
+
+        const noShowRows = document.getElementById('noShowRows');
+        const noShowError = document.getElementById('noShowError');
+
+        let noShowSequence = 0;
+        let noShowBusy = false;
+
+        function showNoShowError(error) {
+            if (!error.shown) {
+                noShowError.textContent =
+                    error.message || '노쇼 처리 중 오류가 발생했습니다.';
+                noShowError.classList.remove('d-none');
+            }
+        }
+
+        async function loadNoShowCandidates(page) {
+            if (noShowBusy) return;
+
+            const sequence = ++noShowSequence;
+
+            noShowError.classList.add('d-none');
+            noShowError.textContent = '';
+            document.getElementById('noShowCount').textContent = '';
+            document.getElementById('noShowPagination').innerHTML = '';
+
+            noShowRows.innerHTML =
+                '<tr><td colspan="7" class="text-center text-muted py-4">' +
+                '노쇼 대상 예약을 불러오는 중입니다.</td></tr>';
+
+            try {
+                const result = await api(
+                    'GET', `${API_URL}/no-show-candidates?page=${page}`
+                );
+
+                if (sequence !== noShowSequence) return;
+
+                document.getElementById('noShowCount').textContent =
+                    `대상 예약 총 ${result.totalElements}건`;
+
+                if (result.content.length === 0) {
+                    noShowRows.innerHTML =
+                        '<tr><td colspan="7" class="text-center text-muted py-4">' +
+                        '노쇼 처리 대상 예약이 없습니다.</td></tr>';
+                } else {
+                    renderRows(noShowRows, result.content, item => `
+                <tr>
+                    <td>${esc(item.reservationCode)}</td>
+                    <td>${esc(item.guestName)}</td>
+                    <td>${esc(item.guestPhone)}</td>
+                    <td>${esc(item.roomNumber)}</td>
+                    <td>${esc(formatDate(item.checkInDate))}</td>
+                    <td>${esc(formatDate(item.checkOutDate))}</td>
+                    <td>
+                        <button type="button"
+                                class="btn btn-warning btn-sm"
+                                data-no-show-id="${esc(item.id)}"
+                                data-reservation-code="${esc(item.reservationCode)}">
+                            노쇼 처리
+                        </button>
+                    </td>
+                </tr>
+            `);
+                }
+
+                renderPagination(
+                    document.getElementById('noShowPagination'),
+                    result,
+                    loadNoShowCandidates
+                );
+            } catch (error) {
+                if (sequence !== noShowSequence) return;
+
+                noShowRows.innerHTML =
+                    '<tr><td colspan="7" class="text-center text-muted py-4">' +
+                    '대상 목록을 불러오지 못했습니다. 팝업을 다시 열어 주세요.' +
+                    '</td></tr>';
+
+                showNoShowError(error);
+            }
+        }
+
+        document.getElementById('openNoShowButton')
+            .addEventListener('click', () => {
+                loadNoShowCandidates(0);
+            });
+
+        noShowRows.addEventListener('click', async e => {
+            const button = e.target.closest('[data-no-show-id]');
+            if (!button || noShowBusy) return;
+
+            const id = button.dataset.noShowId;
+            const code = button.dataset.reservationCode;
+
+            if (!window.confirm(
+                `예약 ${code}을 노쇼 처리할까요?\n` +
+                '실제 미입실 여부를 확인해 주세요. 환불은 진행되지 않습니다.'
+            )) {
+                return;
+            }
+
+            noShowBusy = true;
+            noShowError.classList.add('d-none');
+            noShowError.textContent = '';
+
+            noShowRows.querySelectorAll('[data-no-show-id]')
+                .forEach(item => {
+                    item.disabled = true;
+                });
+
+            document.querySelectorAll('.no-show-close')
+                .forEach(item => {
+                    item.disabled = true;
+                });
+
+            try {
+                await api('POST', `${API_URL}/${id}/no-show`);
+
+                toast('노쇼 처리되었습니다.');
+
+                noShowBusy = false;
+
+                // 처리한 예약을 대상 목록에서 제외하고 일반 목록도 갱신합니다.
+                await Promise.all([
+                    loadNoShowCandidates(0),
+                    load(0)
+                ]);
+            } catch (error) {
+                showNoShowError(error);
+            } finally {
+                noShowBusy = false;
+
+                noShowRows.querySelectorAll('[data-no-show-id]')
+                    .forEach(item => {
+                        item.disabled = false;
+                    });
+
+                document.querySelectorAll('.no-show-close')
+                    .forEach(item => {
+                        item.disabled = false;
+                    });
+            }
+        });
 
         load(0);
     </script>
