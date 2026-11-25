@@ -1,38 +1,455 @@
 <!DOCTYPE html>
 <!--/*
-  대시보드 /admin (SCR-STA-01 자리). 로그인하면 처음 보는 화면입니다.
+  대시보드 /admin — SCR-STA-01 통합 대시보드 + SCR-STA-02 데이터 내보내기(팝업). 로그인하면 처음 보는 화면입니다.
 
   이 화면이 하는 일
-    지금은 빈 카드 3개뿐입니다. SCR-STA-01 담당자가 가동률·채널별 예약·매출 그래프로 채웁니다(화면목록정의서 "그래프 3종").
+    HOST·STAFF(관리 스태프): 조회 기간·단위를 고르면 그래프 3종을 그립니다(총괄 결정 7 — 이 두 역할만 통계 API 를 부름).
+      - 가동률   GET /api/statistics/occupancy?from=&to=&unit=   선 그래프. hasData=false 면 "데이터 없음"
+      - 채널별   GET /api/statistics/channels?from=&to=          막대 그래프(예약 건수) + 표(채널·건수·매출). 단위 없음
+      - 매출     GET /api/statistics/revenue?from=&to=&unit=     합계 + 전월 대비(growthRate null → "비교 불가") + 막대 그래프
+      기본 기간은 최근 30일(오늘-29일 ~ 오늘), 단위는 일. 단위는 가동률·매출에만 적용합니다.
+    [내보내기] → 팝업(항목·기간·단위) → [다운로드] 가 /api/statistics/export?type=&from=&to=&unit= 로 주소 이동해 CSV 를 받습니다.
+      주소 이동이라 서버 오류가 나면 JSON 이 화면에 그대로 뜨므로, 아래 경우에는 버튼을 막고 안내 문구를 보여 줍니다.
+        시작일 > 종료일 / 기간 366일 초과 / 확인 중(조회 중) / 데이터 없음(가동률 hasData=false, 채널별 건수·매출 모두 0, 매출 totalRevenue 0)
+    FRONT·CLEANING: "왼쪽 메뉴에서 업무를 선택하세요." 만 보입니다. 그래프·버튼·script(Chart.js 포함)는 HTML 에 아예 나오지 않습니다.
 
-  따라 만들 때 바꿀 곳 (SCR-STA-01 담당자)
-    카드 안 "준비 중" 자리. 데이터는 목록 화면(admin/guidebooks/list.html)처럼 <script> 에서 api() 로 불러 그립니다.
+  라이브러리
+    Chart.js 2.9.4 를 이 화면에서만, HOST·STAFF 블록 안에서만 불러옵니다(총괄 결정. layout.html 은 그대로).
+
+  주의
+    API 가 준 글자(채널 이름 등)를 HTML 에 넣을 때는 esc() 로 감쌉니다. 그래프 캔버스 글자는 Chart.js 가 그리므로 괜찮습니다.
+    날짜는 브라우저 기준 오늘입니다. toISOString() 은 UTC 라 새벽에 하루 전 날짜가 되므로 쓰지 않습니다(toDateText).
 */-->
 <html xmlns:th="http://www.thymeleaf.org"
       th:replace="~{admin/layout :: layout('대시보드', ~{::section})}">
 <body>
 <section class="content">
     <div class="container-fluid">
-        <div class="row">
-            <div class="col-lg-4">
-                <div class="card">
-                    <div class="card-header"><h2 class="card-title">가동률</h2></div>
-                    <div class="card-body text-center text-muted py-5">준비 중</div>
-                </div>
-            </div>
-            <div class="col-lg-4">
-                <div class="card">
-                    <div class="card-header"><h2 class="card-title">채널별 예약</h2></div>
-                    <div class="card-body text-center text-muted py-5">준비 중</div>
-                </div>
-            </div>
-            <div class="col-lg-4">
-                <div class="card">
-                    <div class="card-header"><h2 class="card-title">매출</h2></div>
-                    <div class="card-body text-center text-muted py-5">준비 중</div>
-                </div>
-            </div>
+
+        <!--/* 통계 대상이 아닌 역할(FRONT·CLEANING) */-->
+        <div class="card" th:unless="${loginUser.role.name() == 'HOST' or loginUser.role.name() == 'STAFF'}">
+            <div class="card-body text-center text-muted py-5">왼쪽 메뉴에서 업무를 선택하세요.</div>
         </div>
+
+        <!--/* HOST·STAFF 만: 그래프·버튼·script 전부 이 블록 안 */-->
+        <th:block th:if="${loginUser.role.name() == 'HOST' or loginUser.role.name() == 'STAFF'}">
+
+            <!-- 조회 조건 -->
+            <div class="card">
+                <div class="card-body py-2 d-flex flex-wrap align-items-center">
+                    <label for="from" class="mb-0 mr-1 small">기간</label>
+                    <input type="date" id="from" class="form-control form-control-sm w-auto mr-1">
+                    <span class="mr-1">~</span>
+                    <input type="date" id="to" class="form-control form-control-sm w-auto mr-3" aria-label="종료일">
+                    <label for="unit" class="mb-0 mr-1 small">단위</label>
+                    <select id="unit" class="form-control form-control-sm w-auto mr-1">
+                        <option value="DAY">일</option>
+                        <option value="WEEK">주</option>
+                        <option value="MONTH">월</option>
+                    </select>
+                    <span class="small text-muted mr-3">(가동률·매출 그래프에 적용)</span>
+                    <button type="button" id="searchButton" class="btn btn-primary btn-sm mr-2" onclick="loadAll()">조회</button>
+                    <span id="filterMessage" class="small text-danger"></span>
+                    <button type="button" class="btn btn-outline-secondary btn-sm ml-auto" onclick="openExport()">
+                        <i class="fas fa-download mr-1"></i>내보내기
+                    </button>
+                </div>
+            </div>
+
+            <div class="row">
+                <!-- 가동률 (STA-001) -->
+                <div class="col-lg-4">
+                    <div class="card">
+                        <div class="card-header"><h2 class="card-title">가동률</h2></div>
+                        <div class="card-body">
+                            <p class="small text-muted mb-2" id="occupancySummary">&nbsp;</p>
+                            <div class="position-relative" style="height: 240px">
+                                <canvas id="occupancyChart"></canvas>
+                                <div id="occupancyEmpty" class="dashboard-empty d-none">데이터 없음</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 채널별 예약 (STA-002) -->
+                <div class="col-lg-4">
+                    <div class="card">
+                        <div class="card-header"><h2 class="card-title">채널별 예약</h2></div>
+                        <div class="card-body">
+                            <p class="small text-muted mb-2">예약 건수 (예약한 날 기준)</p>
+                            <div class="position-relative" style="height: 240px">
+                                <canvas id="channelChart"></canvas>
+                                <div id="channelEmpty" class="dashboard-empty d-none">데이터 없음</div>
+                            </div>
+                        </div>
+                        <div class="card-body p-0 border-top">
+                            <table class="table table-sm mb-0">
+                                <thead>
+                                <tr>
+                                    <th>채널</th>
+                                    <th class="text-right" style="width: 80px">예약 건수</th>
+                                    <th class="text-right" style="width: 120px">매출</th>
+                                </tr>
+                                </thead>
+                                <tbody id="channelRows"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 매출 (STA-003) -->
+                <div class="col-lg-4">
+                    <div class="card">
+                        <div class="card-header"><h2 class="card-title">매출</h2></div>
+                        <div class="card-body">
+                            <p class="mb-0"><span class="h4 mb-0" id="revenueTotal">-</span></p>
+                            <p class="small mb-2">
+                                <span class="text-muted">전월 대비</span>
+                                <span id="revenueGrowth" class="font-weight-bold">-</span>
+                                <span class="text-muted" id="revenuePrevious"></span>
+                            </p>
+                            <div class="position-relative" style="height: 214px">
+                                <canvas id="revenueChart"></canvas>
+                                <div id="revenueEmpty" class="dashboard-empty d-none">데이터 없음</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 내보내기 팝업 (SCR-STA-02). layout.html 의 #confirmModal 모양을 따랐습니다. -->
+            <div class="modal fade" id="exportModal" tabindex="-1" role="dialog" aria-labelledby="exportModalTitle" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered" role="document">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2 class="modal-title h5" id="exportModalTitle">데이터 내보내기</h2>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label for="exportType">항목</label>
+                                <select id="exportType" class="form-control" onchange="checkExport()">
+                                    <option value="OCCUPANCY">가동률</option>
+                                    <option value="CHANNEL">채널별 예약</option>
+                                    <option value="REVENUE">매출</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="exportFrom">기간</label>
+                                <div class="d-flex align-items-center">
+                                    <input type="date" id="exportFrom" class="form-control" onchange="checkExport()">
+                                    <span class="mx-2">~</span>
+                                    <input type="date" id="exportTo" class="form-control" aria-label="종료일" onchange="checkExport()">
+                                </div>
+                            </div>
+                            <div class="form-group mb-0">
+                                <label for="exportUnit">단위</label>
+                                <select id="exportUnit" class="form-control" onchange="checkExport()">
+                                    <option value="DAY">일</option>
+                                    <option value="WEEK">주</option>
+                                    <option value="MONTH">월</option>
+                                </select>
+                                <small class="form-text text-muted" id="exportUnitHint"></small>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <span id="exportMessage" class="small text-muted mr-auto"></span>
+                            <button type="button" class="btn btn-secondary" data-dismiss="modal">취소</button>
+                            <button type="button" id="exportButton" class="btn btn-primary" onclick="download()" disabled>다운로드</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <style>
+              .dashboard-empty {
+                position: absolute; inset: 0;
+                display: flex; align-items: center; justify-content: center;
+                color: #6c757d; background: #fff;
+              }
+              .dashboard-empty.d-none { display: none !important; }
+            </style>
+
+            <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
+            <script>
+              const API_URL = '/api/statistics';
+              const DEFAULT_DAYS = 30;    // 최근 30일 (오늘-29일 ~ 오늘)
+              const MAX_DAYS = 366;       // 서버와 같은 기준 (1년 이내)
+              const NO_DATA = '선택한 기간에 데이터가 없습니다.';
+              const BAR_COLOR = '#3c8dbc';
+
+              const charts = {};      // 캔버스 id → Chart (다시 조회하면 데이터만 바꿔 그림)
+              let loadSeq = 0;        // 늦게 온 이전 응답이 새 결과를 덮지 않도록
+              let exportSeq = 0;
+
+              // ---------- 날짜 ----------
+
+              /** Date → '2026-11-24' (브라우저 시간 기준) */
+              function toDateText(date) {
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                const d = String(date.getDate()).padStart(2, '0');
+                return `${date.getFullYear()}-${m}-${d}`;
+              }
+
+              /** 두 날짜를 포함한 일수. '2026-11-01','2026-11-30' → 30 */
+              function dayCount(from, to) {
+                const toUtc = text => { const p = text.split('-').map(Number); return Date.UTC(p[0], p[1] - 1, p[2]); };
+                return (toUtc(to) - toUtc(from)) / 86400000 + 1;
+              }
+
+              /** 기간 확인. 문제가 없으면 null, 있으면 안내 문구 (서버 문구와 같게) */
+              function periodError(from, to) {
+                if (!from || !to) return '기간을 선택해 주세요.';
+                if (from > to) return '조회 시작일은 종료일보다 늦을 수 없습니다.';
+                if (dayCount(from, to) > MAX_DAYS) return '조회 기간은 1년 이내로 선택해 주세요.';
+                return null;
+              }
+
+              /** 그래프 아래 글자. 하루 → 11-24 / 한 달 전체 → 2026-11 / 그 밖 → 11-17~11-23 */
+              function periodLabel(item) {
+                const start = item.startDate, end = item.endDate;
+                if (start === end) return start.slice(5);
+                const startDay = Number(start.slice(8)), endDate = new Date(end + 'T00:00:00');
+                const isLastDay = new Date(endDate.getTime() + 86400000).getDate() === 1;
+                if (startDay === 1 && isLastDay && start.slice(0, 7) === end.slice(0, 7)) return start.slice(0, 7);
+                return `${start.slice(5)}~${end.slice(5)}`;
+              }
+
+              // ---------- 비어 있는지 (내보내기 비활성 기준, 총괄 결정) ----------
+
+              function isEmpty(type, data) {
+                if (type === 'OCCUPANCY') return !data.hasData;
+                if (type === 'CHANNEL') return data.items.every(i => Number(i.bookingCount) === 0 && Number(i.salesAmount) === 0);
+                return Number(data.totalRevenue) === 0; // REVENUE
+              }
+
+              function apiUrl(type, from, to, unit) {
+                const path = { OCCUPANCY: 'occupancy', CHANNEL: 'channels', REVENUE: 'revenue' }[type];
+                const params = new URLSearchParams({ from, to });
+                if (type !== 'CHANNEL') params.set('unit', unit); // 채널별 API 는 단위가 없음
+                return `${API_URL}/${path}?${params}`;
+              }
+
+              // ---------- 그래프 ----------
+
+              /** 처음이면 만들고, 있으면 데이터만 바꿉니다. */
+              function drawChart(id, type, labels, values, options) {
+                if (charts[id]) {
+                  charts[id].data.labels = labels;
+                  charts[id].data.datasets[0].data = values;
+                  charts[id].update();
+                  return;
+                }
+                charts[id] = new Chart(document.getElementById(id), {
+                  type,
+                  data: {
+                    labels,
+                    datasets: [{
+                      data: values,
+                      backgroundColor: type === 'line' ? 'rgba(60, 141, 188, 0.1)' : BAR_COLOR,
+                      borderColor: BAR_COLOR,
+                      borderWidth: type === 'line' ? 2 : 0,
+                      pointRadius: type === 'line' ? 2 : 0,
+                      lineTension: 0,
+                      maxBarThickness: 32
+                    }]
+                  },
+                  options: Object.assign({
+                    maintainAspectRatio: false,
+                    legend: { display: false },
+                    animation: { duration: 300 }
+                  }, options)
+                });
+              }
+
+              function showEmpty(id, empty) {
+                document.getElementById(id).classList.toggle('d-none', !empty);
+              }
+
+              function money(value) {
+                return formatMoney(Number(value));
+              }
+
+              // ---------- 대시보드 조회 ----------
+
+              async function loadAll() {
+                const from = document.getElementById('from').value;
+                const to = document.getElementById('to').value;
+                const unit = document.getElementById('unit').value;
+
+                const error = periodError(from, to);
+                document.getElementById('filterMessage').textContent = error || '';
+                if (error) return;
+
+                const seq = ++loadSeq;
+                const button = document.getElementById('searchButton');
+                button.disabled = true;
+                try {
+                  // 하나가 실패해도 나머지 카드는 그려지도록 따로 처리합니다.
+                  await Promise.all([
+                    loadOccupancy(seq, from, to, unit),
+                    loadChannels(seq, from, to),
+                    loadRevenue(seq, from, to, unit)
+                  ]);
+                } finally {
+                  if (seq === loadSeq) button.disabled = false;
+                }
+              }
+
+              async function loadOccupancy(seq, from, to, unit) {
+                try {
+                  const data = await api('GET', apiUrl('OCCUPANCY', from, to, unit));
+                  if (seq !== loadSeq) return;
+                  document.getElementById('occupancySummary').textContent = `전체 객실 ${data.totalRooms}실`;
+                  drawChart('occupancyChart', 'line',
+                    data.items.map(periodLabel),
+                    data.items.map(i => Number(i.occupancyRate)), {
+                      scales: { yAxes: [{ ticks: { beginAtZero: true, max: 100, callback: v => v + '%' } }] },
+                      tooltips: {
+                        callbacks: {
+                          label: (tip) => {
+                            const item = data.items[tip.index];
+                            return `${Number(item.occupancyRate).toFixed(2)}% (${item.soldRoomNights} / ${item.availableRoomNights})`;
+                          }
+                        }
+                      }
+                    });
+                  showEmpty('occupancyEmpty', isEmpty('OCCUPANCY', data));
+                } catch (error) {
+                  showError(error);
+                }
+              }
+
+              async function loadChannels(seq, from, to) {
+                try {
+                  const data = await api('GET', apiUrl('CHANNEL', from, to));
+                  if (seq !== loadSeq) return;
+                  drawChart('channelChart', 'bar',
+                    data.items.map(i => i.channelName),
+                    data.items.map(i => Number(i.bookingCount)), {
+                      scales: { yAxes: [{ ticks: { beginAtZero: true, precision: 0 } }] },
+                      tooltips: { callbacks: { label: (tip) => `${tip.yLabel}건` } }
+                    });
+                  showEmpty('channelEmpty', isEmpty('CHANNEL', data));
+                  // 채널 이름은 API 가 준 글자라 esc() 로 감쌉니다.
+                  document.getElementById('channelRows').innerHTML = data.items.map(i => `
+                    <tr>
+                      <td>${esc(i.channelName)}</td>
+                      <td class="text-right">${Number(i.bookingCount).toLocaleString('ko-KR')}</td>
+                      <td class="text-right">${esc(money(i.salesAmount))}</td>
+                    </tr>`).join('');
+                } catch (error) {
+                  showError(error);
+                }
+              }
+
+              async function loadRevenue(seq, from, to, unit) {
+                try {
+                  const data = await api('GET', apiUrl('REVENUE', from, to, unit));
+                  if (seq !== loadSeq) return;
+                  document.getElementById('revenueTotal').textContent = money(data.totalRevenue);
+
+                  const growth = document.getElementById('revenueGrowth');
+                  growth.classList.remove('text-success', 'text-danger');
+                  if (data.growthRate === null) {
+                    growth.textContent = '비교 불가';
+                  } else {
+                    const rate = Number(data.growthRate);
+                    growth.textContent = `${rate > 0 ? '+' : ''}${rate.toFixed(2)}%`;
+                    if (rate > 0) growth.classList.add('text-success');
+                    if (rate < 0) growth.classList.add('text-danger');
+                  }
+                  document.getElementById('revenuePrevious').textContent =
+                    `(${data.previousStartDate} ~ ${data.previousEndDate})`;
+
+                  drawChart('revenueChart', 'bar',
+                    data.items.map(periodLabel),
+                    data.items.map(i => Number(i.revenue)), {
+                      scales: { yAxes: [{ ticks: { beginAtZero: true, callback: v => Number(v).toLocaleString('ko-KR') } }] },
+                      tooltips: { callbacks: { label: (tip) => money(tip.yLabel) } }
+                    });
+                  showEmpty('revenueEmpty', isEmpty('REVENUE', data));
+                } catch (error) {
+                  showError(error);
+                }
+              }
+
+              // ---------- 내보내기 팝업 (SCR-STA-02) ----------
+
+              /** 팝업을 열 때 지금 대시보드 조건을 그대로 가져옵니다. */
+              function openExport() {
+                document.getElementById('exportFrom').value = document.getElementById('from').value;
+                document.getElementById('exportTo').value = document.getElementById('to').value;
+                document.getElementById('exportUnit').value = document.getElementById('unit').value;
+                $('#exportModal').modal('show');
+                checkExport();
+              }
+
+              function setExportState(enabled, message, isError) {
+                document.getElementById('exportButton').disabled = !enabled;
+                const span = document.getElementById('exportMessage');
+                span.textContent = message || '';
+                span.classList.toggle('text-danger', !!isError);
+                span.classList.toggle('text-muted', !isError);
+              }
+
+              /** 조건이 바뀔 때마다: 기간 확인 → (조회 중 막기) → 데이터 있는지 확인 → 버튼 켜기/끄기 */
+              async function checkExport() {
+                const type = document.getElementById('exportType').value;
+                const from = document.getElementById('exportFrom').value;
+                const to = document.getElementById('exportTo').value;
+                const unit = document.getElementById('exportUnit').value;
+
+                const unitSelect = document.getElementById('exportUnit');
+                unitSelect.disabled = type === 'CHANNEL';
+                document.getElementById('exportUnitHint').textContent =
+                  type === 'CHANNEL' ? '채널별 예약은 기간 전체 합계라 단위가 없습니다.' : '';
+
+                const seq = ++exportSeq;
+                const error = periodError(from, to);
+                if (error) {
+                  setExportState(false, error, true);
+                  return;
+                }
+
+                setExportState(false, '확인 중…', false);
+                try {
+                  const data = await api('GET', apiUrl(type, from, to, unit));
+                  if (seq !== exportSeq) return;
+                  if (isEmpty(type, data)) {
+                    setExportState(false, NO_DATA, false);
+                  } else {
+                    setExportState(true, '', false);
+                  }
+                } catch (error) {
+                  if (seq !== exportSeq) return;
+                  setExportState(false, '', false);
+                  showError(error);
+                }
+              }
+
+              /** 주소 이동으로 CSV 를 받습니다(서버가 attachment 로 응답해서 화면은 그대로). */
+              function download() {
+                const type = document.getElementById('exportType').value;
+                const from = document.getElementById('exportFrom').value;
+                const to = document.getElementById('exportTo').value;
+                const unit = document.getElementById('exportUnit').value;
+                if (periodError(from, to)) return checkExport(); // 버튼이 막혀 있어 보통은 오지 않음
+                location.href = `${API_URL}/export?${new URLSearchParams({ type, from, to, unit })}`;
+                $('#exportModal').modal('hide');
+              }
+
+              // ---------- 시작 ----------
+
+              (function init() {
+                const today = new Date();
+                const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (DEFAULT_DAYS - 1));
+                document.getElementById('from').value = toDateText(start);
+                document.getElementById('to').value = toDateText(today);
+                loadAll();
+              })();
+            </script>
+        </th:block>
+
     </div>
 </section>
 </body>
