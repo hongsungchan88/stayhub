@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{admin/layout :: layout('동기화 로그', ~{::section})}">
+<body>
+<section class="content">
+    <div class="container-fluid">
+        <div class="card">
+            <div class="card-header"><h2 class="card-title">모의 채널 A 예약</h2></div>
+            <div class="card-body table-responsive p-0">
+                <table class="table table-hover mb-0">
+                    <thead>
+                    <tr>
+                        <th>외부 예약번호</th><th>객실</th><th>예약자</th>
+                        <th>체크인</th><th>체크아웃</th><th>가져오기</th>
+                    </tr>
+                    </thead>
+                    <tbody id="bookingRows"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h2 class="card-title">가져오기 기록</h2></div>
+            <div class="card-body table-responsive p-0">
+                <table class="table table-hover mb-0">
+                    <thead>
+                    <tr>
+                        <th>기록 시각</th><th>채널</th><th>이벤트</th>
+                        <th>결과</th><th>오류 사유</th><th>우선 규칙</th>
+                    </tr>
+                    </thead>
+                    <tbody id="logRows"></tbody>
+                </table>
+            </div>
+            <div class="card-footer" id="logPagination"></div>
+        </div>
+    </div>
+
+    <script>
+        const CHANNEL_SYNC_URL = '/api/channel-sync';
+        const bookingRows = document.getElementById('bookingRows');
+
+        async function loadBookings() {
+            try {
+                const bookings = await api('GET', `${CHANNEL_SYNC_URL}/mock-a/preview`);
+                renderRows(bookingRows, bookings, booking => `
+                    <tr>
+                        <td>${esc(booking.externalReservationId)}</td>
+                        <td>${esc(booking.roomNumber)}</td>
+                        <td>${esc(booking.guestName)}</td>
+                        <td>${esc(formatDate(booking.checkInDate))}</td>
+                        <td>${esc(formatDate(booking.checkOutDate))}</td>
+                        <td><button type="button" class="btn btn-primary btn-sm"
+                                    data-external-id="${esc(booking.externalReservationId)}">
+                            가져오기
+                        </button></td>
+                    </tr>`);
+            } catch (error) {
+                showError(error);
+            }
+        }
+
+        async function loadLogs(page) {
+            try {
+                const result = await api('GET', `${CHANNEL_SYNC_URL}/logs?page=${page}`);
+                renderRows(document.getElementById('logRows'), result.content, log => {
+                    const rowStyle = log.syncStatus === 'CONFLICT' ? 'table-warning'
+                        : log.syncStatus === 'FAIL' ? 'table-danger' : '';
+                    return `
+                        <tr class="${rowStyle}">
+                            <td>${esc(formatDateTime(log.syncedAt))}</td>
+                            <td>${esc(log.channelName)}</td>
+                            <td>${esc(log.syncEvent)}</td>
+                            <td>${esc(log.syncStatus)}</td>
+                            <td>${esc(log.errorMessage || '-')}</td>
+                            <td>${esc(log.priorityRule || '-')}</td>
+                        </tr>`;
+                });
+                renderPagination(document.getElementById('logPagination'), result, loadLogs);
+            } catch (error) {
+                showError(error);
+            }
+        }
+
+        bookingRows.addEventListener('click', async event => {
+            const button = event.target.closest('button[data-external-id]');
+            if (!button || button.disabled) return;
+
+            button.disabled = true;
+            try {
+                const externalId = encodeURIComponent(button.dataset.externalId);
+                const result = await api('POST', `${CHANNEL_SYNC_URL}/mock-a/import/${externalId}`);
+                if (result.outcome === 'CREATED') {
+                    toast('예약을 가져왔습니다.');
+                } else if (result.outcome === 'ALREADY_IMPORTED') {
+                    toast('이미 가져온 예약입니다.', 'warning');
+                } else {
+                    toast('이미 반영된 버전보다 오래된 예약입니다.', 'warning');
+                }
+            } catch (error) {
+                showError(error);
+            } finally {
+                button.disabled = false;
+                await loadLogs(0);
+            }
+        });
+
+        loadBookings();
+        loadLogs(0);
+    </script>
+</section>
+</body>
+</html>

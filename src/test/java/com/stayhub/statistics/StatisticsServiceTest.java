@@ -84,16 +84,16 @@ class StatisticsServiceTest {
 	void occupancyCountsOnlySoldStatuses() {
 		LocalDate base = TODAY;
 
-// 오늘 체크인 예정인 예약을 먼저 노쇼 처리합니다.
+		// 오늘 체크인 예정인 예약을 먼저 노쇼 처리합니다.
 		Reservation noShow = reserve(room2, null, base, base.plusDays(3));
 		reservationService.changeStatus(noShow.getId(), ReservationStatus.NOSHOW);
 
-// 노쇼 처리된 객실은 같은 날짜에 다시 예약할 수 있습니다.
+		// 노쇼 처리된 객실은 같은 날짜에 다시 예약할 수 있습니다.
 		reserve(room1, null, base, base.plusDays(2));
 		Reservation checkedIn = reserve(room2, null, base, base.plusDays(1));
 		reservationService.changeStatus(checkedIn.getId(), ReservationStatus.CHECKED_IN);
 
-// 내일 체크인 예정인 예약은 오늘 취소할 수 있습니다.
+		// 내일 체크인 예정인 예약은 오늘 취소할 수 있습니다.
 		Reservation cancelled = reserve(room2, null, base.plusDays(1), base.plusDays(2));
 		reservationService.changeStatus(cancelled.getId(), ReservationStatus.CANCELLED);
 

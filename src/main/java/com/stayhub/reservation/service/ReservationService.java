@@ -28,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.stayhub.reservation.dto.ReservationUpdateRequest;
 import com.stayhub.payment.service.PaymentService;
+import com.stayhub.reservation.exception.ReservationOverlapException;
 
 /**
  * 예약 생성·상태 변경·목록 조회·통합 검색.
@@ -92,7 +93,7 @@ public class ReservationService {
 
 		if (reservationRepository.existsOverlap(
 				roomId, checkInDate, checkOutDate, ReservationStatus.RELEASED)) {
-			throw new BusinessException("선택한 날짜에 이미 예약된 객실입니다.");
+			throw new ReservationOverlapException("선택한 날짜에 이미 예약된 객실입니다.");
 		}
 
 		int count = guestCount == null ? 1 : guestCount;
@@ -406,7 +407,6 @@ public class ReservationService {
 		return getDetail(reservation.getId());
 	}
 
-	/** 총괄의 상태 전이 규칙을 사용합니다. 업무별 추가 연동은 이후 구현합니다. */
 	/**
 	 * 예약 상태 변경의 공통 진입점.
 	 * 취소는 환불까지 같은 트랜잭션에서 처리합니다.
