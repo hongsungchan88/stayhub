@@ -1,4 +1,12 @@
+stayhub:
+  # 업로드한 사진을 저장할 폴더(저장소 밖). 다른 곳에 두려면 application-local.yml 에 같은 키로 적으세요.
+  upload-dir: ${user.home}/stayhub-uploads
+
 server:
+  tomcat:
+    # 10MB 를 넘는 업로드도 이 크기까지는 끝까지 받은 뒤 400 안내를 보냅니다.
+    # 기본값(2MB)이면 톰캣이 연결을 먼저 끊어 안내 문구가 화면에 도착하지 않습니다.
+    max-swallow-size: 50MB
   servlet:
     session:
       # 30분 동안 요청이 없으면 세션이 끝나 다시 로그인해야 합니다. (정책정의서 "세션 만료")
@@ -13,6 +21,12 @@ spring:
   # 실행할 프로파일. local 이면 application-local.yml 을 함께 읽습니다.
   profiles:
     active: local
+
+  servlet:
+    multipart:
+      # 사진 업로드 크기 제한. 넘으면 GlobalExceptionHandler 가 400 으로 응답합니다.
+      max-file-size: 10MB
+      max-request-size: 10MB
 
   jpa:
     hibernate:

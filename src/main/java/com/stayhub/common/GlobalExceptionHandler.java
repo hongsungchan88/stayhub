@@ -14,6 +14,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
@@ -234,6 +235,20 @@ public class GlobalExceptionHandler {
 		return ResponseEntity
 				.status(HttpStatus.NOT_FOUND)
 				.body(ApiResponse.error("요청한 주소를 찾을 수 없습니다."));
+	}
+
+	/**
+	 * 업로드한 파일이 10MB 를 넘을 때. 400.
+	 *
+	 * <p>제한 크기는 application.yml 의 {@code spring.servlet.multipart} 에 있습니다. 바꾸면 아래 문구도 함께 바꾸세요.
+	 * 응답은 "파일은 10MB 이하만 올릴 수 있습니다."
+	 */
+	@ExceptionHandler(MaxUploadSizeExceededException.class)
+	public ResponseEntity<ApiResponse<Void>> handleMaxUploadSize(MaxUploadSizeExceededException e) {
+		log.warn("업로드 크기 초과: {}", e.getMessage());
+		return ResponseEntity
+				.status(HttpStatus.BAD_REQUEST)
+				.body(ApiResponse.error("파일은 10MB 이하만 올릴 수 있습니다."));
 	}
 
 	/**
