@@ -1,0 +1,34 @@
+{
+  "success": true,
+  "data": [
+    {
+      "channelCode": "MOCK_A", "externalReservationId": "A-1001",
+      "revision": 1, "status": "CONFIRMED", "roomNumber": "201",
+      "guestName": "모의 손님 1", "guestPhone": "010-0000-0000",
+      "checkInDate": "2027-01-14", "checkOutDate": "2027-01-16",
+      "guestCount": 2, "confirmedAt": "2026-11-24T09:00:00+09:00"
+    },
+    {
+      "channelCode": "MOCK_A", "externalReservationId": "A-1002",
+      "revision": 1, "status": "CONFIRMED", "roomNumber": "301",
+      "guestName": "모의 손님 2", "guestPhone": "010-0000-0000",
+      "checkInDate": "2027-01-15", "checkOutDate": "2027-01-17",
+      "guestCount": 2, "confirmedAt": "2026-11-24T09:05:00+09:00"
+    },
+    {
+      "channelCode": "MOCK_A", "externalReservationId": "A-1003",
+      "revision": 1, "status": "CONFIRMED", "roomNumber": "401",
+      "guestName": "모의 손님 3", "guestPhone": "010-0000-0000",
+      "checkInDate": "2027-01-16", "checkOutDate": "2027-01-18",
+      "guestCount": 1, "confirmedAt": "2026-11-24T09:10:00+09:00"
+    },
+    {
+      "channelCode": "MOCK_A", "externalReservationId": "A-1004",
+      "revision": 1, "status": "CONFIRMED", "roomNumber": "201",
+      "guestName": "모의 손님 4", "guestPhone": "010-0000-0000",
+      "checkInDate": "2027-01-15", "checkOutDate": "2027-01-17",
+      "guestCount": 1, "confirmedAt": "2026-11-24T09:30:00+09:00"
+    }
+  ],
+  "message": null
+}

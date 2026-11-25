@@ -10,7 +10,16 @@ import com.stayhub.common.ForbiddenException;
 import com.stayhub.common.UnauthorizedException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.SessionAttribute;
+import com.stayhub.channel.service.ChannelSyncLogService;
+import com.stayhub.channel.dto.ChannelSyncLogResponse;
+import com.stayhub.common.PageResponse;
 
 @RestController
 @RequestMapping("/api/channel-sync")
@@ -18,6 +27,7 @@ import org.springframework.web.bind.annotation.*;
 public class ChannelSyncController {
     private final MockChannelClient mockChannelClient;
     private final MockReservationImportService importer;
+    private final ChannelSyncLogService syncLogService;
 
     @GetMapping("/mock-a/preview")
     public ApiResponse<List<MockChannelFeed.Booking>> previewChannelA(
@@ -31,8 +41,22 @@ public class ChannelSyncController {
             @PathVariable("externalId") String externalId,
             @SessionAttribute(name = LoginUser.SESSION_KEY, required = false) LoginUser user) {
         requireHost(user);
-        var feed = mockChannelClient.readChannelA();
-        return ApiResponse.success(importer.importOne(externalId, feed));
+        try {
+            List<MockChannelFeed.Booking> bookings = mockChannelClient.readChannelA();
+            return ApiResponse.success(importer.importOne(externalId, bookings));
+        } catch (RuntimeException failure) {
+            syncLogService.recordFailure(externalId, failure);
+            throw failure;
+        }
+    }
+
+    /** 호스트에게 동기화 로그 목록을 반환합니다. */
+    @GetMapping("/logs")
+    public ApiResponse<PageResponse<ChannelSyncLogResponse>> getLogs(
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @SessionAttribute(name = LoginUser.SESSION_KEY, required = false) LoginUser user) {
+        requireHost(user);
+        return ApiResponse.success(syncLogService.getList(page));
     }
 
     private void requireHost(LoginUser user) {

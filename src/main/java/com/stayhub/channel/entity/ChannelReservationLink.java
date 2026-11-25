@@ -1,7 +1,13 @@
 package com.stayhub.channel.entity;
 
 import com.stayhub.common.BaseEntity;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -37,7 +43,7 @@ public class ChannelReservationLink extends BaseEntity {
 
     public static ChannelReservationLink create(Long channelId, String externalId,
                                                 Long reservationId, int revision, Instant confirmedAt) {
-        var link = new ChannelReservationLink();
+        ChannelReservationLink link = new ChannelReservationLink();
         link.channelId = channelId;
         link.externalReservationId = externalId;
         link.reservationId = reservationId;

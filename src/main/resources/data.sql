@@ -10,7 +10,8 @@ INSERT IGNORE INTO facilities (facility_code, facility_name, sort_order, use_yn,
 -- 1번: 직접 예약(등록 채널, 수수료 0%). 2번: 기타 채널(미등록 채널, 기본 수수료율 10% 적용).
 INSERT IGNORE INTO channels (channel_id, channel_name, commission_rate, is_registered, default_commission_rate, created_at, updated_at) VALUES
 (1, '직접 예약', 0.00, true, 10.00, NOW(), NOW()),
-(2, '기타 채널', 0.00, false, 10.00, NOW(), NOW());
+(2, '기타 채널', 0.00, false, 10.00, NOW(), NOW()),
+(3, '모의 채널 A', 15.00, true, 10.00, NOW(), NOW());
 
 -- 통합 인박스(COM-001) 샘플. 채널 연동이 없는 1차에서 화면을 바로 볼 수 있게 넣어 둡니다.
 -- 고정 ID + INSERT IGNORE 라서 한 번만 들어갑니다. 더 넣으려면 POST /api/message-threads/inbound(시연용 모의 수신).

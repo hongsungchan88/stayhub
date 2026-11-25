@@ -23,16 +23,21 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import org.springframework.test.web.servlet.MvcResult;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import org.springframework.test.context.transaction.AfterTransaction;
+import org.springframework.test.context.transaction.TestTransaction;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Transactional(isolation = Isolation.READ_COMMITTED)
+@Transactional
 class MockReservationImportTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
@@ -46,29 +51,29 @@ class MockReservationImportTest {
     Long channelId, roomId;
     final LoginUser host = new LoginUser(1L, "tester", "테스트", UserRole.HOST);
 
-    @BeforeEach void prepare() {
-        if (channels.findAllByChannelNameAndRegisteredTrue("MOCK_A").isEmpty()) {
-            jdbc.update("""
-                    INSERT INTO channels (channel_name, commission_rate, is_registered,
-                        default_commission_rate, created_at, updated_at)
-                    VALUES ('MOCK_A', 0, true, 10, NOW(), NOW())
-                    """);
-        }
-        channelId = channels.findAllByChannelNameAndRegisteredTrue("MOCK_A").getFirst().getId();
+    @BeforeEach
+    void prepare() {
+        channelId = 3L;
+        assertThat(channels.findById(channelId).orElseThrow().getChannelName())
+                .isEqualTo("모의 채널 A");
+
         String tag = UUID.randomUUID().toString().substring(0, 8);
         externalId = "A-" + tag;
         roomNumber = "CHN-" + tag;
-        roomId = rooms.saveAndFlush(Room.create(PropertyScope.DEFAULT_PROPERTY_ID,
-                roomNumber, "STANDARD", new BigDecimal("100000"), 2)).getId();
+        roomId = rooms.saveAndFlush(Room.create(
+                PropertyScope.DEFAULT_PROPERTY_ID,
+                roomNumber, "STANDARD", new BigDecimal("100000"), 2
+        )).getId();
+
         feed(1, "CONFIRMED");
     }
 
     private void feed(int revision, String status) {
         LocalDate date = LocalDate.now().plusDays(10);
-        var b = new MockChannelFeed.Booking("MOCK_A", externalId, revision, status,
+        MockChannelFeed.Booking booking = new MockChannelFeed.Booking("MOCK_A", externalId, revision, status,
                 roomNumber, "Mock Guest", "010-0000-0000", date, date.plusDays(2), 1,
                 OffsetDateTime.now());
-        when(client.readChannelA()).thenReturn(List.of(b));
+        when(client.readChannelA()).thenReturn(List.of(booking));
     }
 
     private String url() { return "/api/channel-sync/mock-a/import/" + externalId; }
@@ -83,13 +88,13 @@ class MockReservationImportTest {
                 .andExpect(status().isOk());
         assertThat(countBookings()).isZero();
 
-        var first = mvc.perform(post(url()).sessionAttr(LoginUser.SESSION_KEY, host))
+        MvcResult first = mvc.perform(post(url()).sessionAttr(LoginUser.SESSION_KEY, host))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.outcome").value("CREATED"))
                 .andExpect(jsonPath("$.data.createdCount").value(1)).andReturn();
         long id = json.readTree(first.getResponse().getContentAsByteArray()).at("/data/reservationId").asLong();
         assertThat(id).isPositive();
 
-        var second = mvc.perform(post(url()).sessionAttr(LoginUser.SESSION_KEY, host))
+        MvcResult second = mvc.perform(post(url()).sessionAttr(LoginUser.SESSION_KEY, host))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.outcome").value("ALREADY_IMPORTED"))
                 .andExpect(jsonPath("$.data.createdCount").value(0)).andReturn();
         assertThat(json.readTree(second.getResponse().getContentAsByteArray()).at("/data/reservationId").asLong())
@@ -110,8 +115,45 @@ class MockReservationImportTest {
 
     @Test void importRequiresHost() throws Exception {
         mvc.perform(post(url())).andExpect(status().isUnauthorized());
-        var front = new LoginUser(2L, "front", "프런트", UserRole.FRONT);
+        LoginUser front = new LoginUser(2L, "front", "프런트", UserRole.FRONT);
         mvc.perform(post(url()).sessionAttr(LoginUser.SESSION_KEY, front)).andExpect(status().isForbidden());
         assertThat(countBookings()).isZero();
+    }
+
+    @Test
+    void laterBookingIsRejectedAndConflictLogSurvivesRollback() throws Exception {
+        LocalDate arrival = LocalDate.now().plusDays(10);
+        OffsetDateTime confirmedAt = OffsetDateTime.now();
+
+        MockChannelFeed.Booking earlier = new MockChannelFeed.Booking(
+                "MOCK_A", externalId + "-first", 1, "CONFIRMED",
+                roomNumber, "먼저 확정", "010-0000-0000",
+                arrival, arrival.plusDays(2), 1, confirmedAt.minusMinutes(30));
+
+        MockChannelFeed.Booking later = new MockChannelFeed.Booking(
+                "MOCK_A", externalId, 1, "CONFIRMED",
+                roomNumber, "나중에 확정", "010-0000-0000",
+                arrival.plusDays(1), arrival.plusDays(3), 1, confirmedAt);
+
+        when(client.readChannelA()).thenReturn(List.of(later, earlier));
+
+        mvc.perform(post(url()).sessionAttr(LoginUser.SESSION_KEY, host))
+                .andExpect(status().isBadRequest());
+        assertThat(countBookings()).isZero();
+
+        TestTransaction.flagForRollback();
+        TestTransaction.end();
+
+        assertThat(jdbc.queryForList(
+                "SELECT sync_status FROM channel_sync_logs WHERE sync_event = ?",
+                String.class, "IMPORT " + externalId)).containsExactly("CONFLICT");
+    }
+
+    @AfterTransaction
+    void removeImportLogsCreatedByThisTest() {
+        if (externalId != null) {
+            jdbc.update("DELETE FROM channel_sync_logs WHERE sync_event = ?",
+                    "IMPORT " + externalId);
+        }
     }
 }
