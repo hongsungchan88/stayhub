@@ -3,6 +3,7 @@ package com.stayhub.reservation;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.stayhub.common.PropertyScope;
+import com.stayhub.reservation.dto.ReservationUpdateRequest;
 import com.stayhub.reservation.entity.Reservation;
 import com.stayhub.reservation.repository.ReservationRepository;
 import com.stayhub.reservation.service.ReservationService;
@@ -13,6 +14,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -28,10 +30,10 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 같은 객실·같은 날짜에 동시에 예약하면 하나만 성공하는지 (정책정의서 40행).
+ * 같은 객실·겹치는 날짜로 동시에 예약하거나 예약을 변경하면 하나만 성공하는지 (정책정의서 40행).
  *
  * <p><b>이 파일이 하는 일</b>
- * <br>스레드 2개가 각자 트랜잭션에서 {@code ReservationService.create} 를 부릅니다.
+ * <br>스레드 2개가 각자 트랜잭션에서 {@code ReservationService.create}(또는 {@code update})를 부릅니다.
  * 둘 다 겹침 검사를 통과한 뒤 커밋 직전에 {@link CyclicBarrier} 로 서로를 기다리게 해서,
  * "둘 다 검사를 통과했다" 는 가장 위험한 순간을 매번 똑같이 만듭니다. 그러면 커밋할 때
  * 객실 version 이 충돌해 한쪽은 {@link ObjectOptimisticLockingFailureException}(409)으로 롤백돼야 합니다.
@@ -42,7 +44,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @SpringBootTest
 class ReservationConcurrencyTest {
 
-	private static final LocalDate CHECK_IN = LocalDate.of(2026, 12, 24);
+	private static final LocalDate CHECK_IN = LocalDate.now().plusDays(30);
 
 	@Autowired
 	private ReservationService reservationService;
@@ -73,35 +75,67 @@ class ReservationConcurrencyTest {
 	@Test
 	@DisplayName("두 요청이 동시에 겹침 검사를 통과해도, 커밋은 하나만 성공하고 나머지는 낙관적 락 예외(409)")
 	void onlyOneOfTwoConcurrentReservationsSucceeds() throws Exception {
+		List<Throwable> failures = runTogether(() -> reserve(CHECK_IN), () -> reserve(CHECK_IN));
+
+		assertThat(failures).singleElement().isInstanceOf(ObjectOptimisticLockingFailureException.class);
+		assertThat(reservationsOfRoom()).hasSize(1); // 실패한 쪽의 예약은 롤백돼 남지 않는다
+	}
+
+	@Test
+	@DisplayName("같은 객실의 두 예약을 겹치는 날짜로 동시에 변경해도, 커밋은 하나만 성공하고 나머지는 낙관적 락 예외(409)")
+	void onlyOneOfTwoConcurrentUpdatesSucceeds() throws Exception {
+		LocalDate otherCheckIn = CHECK_IN.plusDays(10);
+		LocalDate target = CHECK_IN.plusDays(20);
+		Long firstId = reserve(CHECK_IN);
+		Long secondId = reserve(otherCheckIn);
+
+		// target+1 하루가 겹친다
+		List<Throwable> failures = runTogether(
+				() -> reservationService.update(
+						firstId, new ReservationUpdateRequest(roomId, target, target.plusDays(2))),
+				() -> reservationService.update(
+						secondId, new ReservationUpdateRequest(roomId, target.plusDays(1), target.plusDays(3))));
+
+		assertThat(failures).singleElement().isInstanceOf(ObjectOptimisticLockingFailureException.class);
+		// 한쪽만 옮겨지고, 실패한 쪽은 롤백돼 원래 날짜 그대로다
+		assertThat(List.of(checkInOf(firstId), checkInOf(secondId))).isIn(
+				List.of(target, otherCheckIn),
+				List.of(CHECK_IN, target.plusDays(1)));
+	}
+
+	/** 두 작업을 각자 트랜잭션에서 실행하되 둘 다 끝난 뒤에 커밋하게 하고, 실패한 쪽의 예외를 돌려줍니다. */
+	private List<Throwable> runTogether(Runnable first, Runnable second) throws Exception {
 		CyclicBarrier bothChecked = new CyclicBarrier(2);
 		TransactionTemplate tx = new TransactionTemplate(transactionManager);
 		ExecutorService pool = Executors.newFixedThreadPool(2);
 
-		List<Future<Long>> results = new ArrayList<>();
-		for (int i = 0; i < 2; i++) {
-			results.add(pool.submit(() -> tx.execute(status -> {
-				Reservation reservation = reservationService.create(
-						null, "동시게스트", "010-0000-0000", roomId, null, CHECK_IN, CHECK_IN.plusDays(1), null);
+		List<Future<?>> results = new ArrayList<>();
+		for (Runnable work : List.of(first, second)) {
+			results.add(pool.submit(() -> tx.executeWithoutResult(status -> {
+				work.run();
 				await(bothChecked); // 둘 다 겹침 검사를 통과한 상태에서 커밋으로 넘어간다
-				return reservation.getId();
 			})));
 		}
 		pool.shutdown();
 
-		int succeeded = 0;
 		List<Throwable> failures = new ArrayList<>();
-		for (Future<Long> result : results) {
+		for (Future<?> result : results) {
 			try {
 				result.get(30, TimeUnit.SECONDS);
-				succeeded++;
-			} catch (java.util.concurrent.ExecutionException e) {
+			} catch (ExecutionException e) {
 				failures.add(e.getCause());
 			}
 		}
+		return failures;
+	}
 
-		assertThat(succeeded).isEqualTo(1);
-		assertThat(failures).singleElement().isInstanceOf(ObjectOptimisticLockingFailureException.class);
-		assertThat(reservationsOfRoom()).hasSize(1); // 실패한 쪽의 예약은 롤백돼 남지 않는다
+	private Long reserve(LocalDate checkIn) {
+		return reservationService.create(
+				null, "동시게스트", "010-0000-0000", roomId, null, checkIn, checkIn.plusDays(1), null).getId();
+	}
+
+	private LocalDate checkInOf(Long reservationId) {
+		return reservationRepository.findById(reservationId).orElseThrow().getCheckInDate();
 	}
 
 	private List<Reservation> reservationsOfRoom() {
