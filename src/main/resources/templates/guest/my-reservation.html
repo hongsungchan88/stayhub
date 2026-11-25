@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<!--/* SCR-GST-04 내 예약 조회. 예약번호와 연락처를 확인한 예약 한 건만 보여 줍니다. */-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{guest/layout :: layout('내 예약 조회', 'my-reservation', ~{::section})}">
+<body>
+<section>
+    <h1 class="h3 mb-3">내 예약 조회</h1>
+    <p class="text-muted">예약번호와 예약할 때 입력한 연락처를 확인해 주세요.</p>
+
+    <div id="lookup-notice" class="alert alert-danger d-none" role="alert"></div>
+    <div class="card mb-4">
+        <div class="card-body">
+            <form id="lookup-form" method="post">
+                <div class="form-row align-items-end">
+                    <div class="form-group col-md-5">
+                        <label for="reservation-code">예약번호</label>
+                        <input id="reservation-code" class="form-control"
+                               type="text" required maxlength="50" autocomplete="off">
+                    </div>
+                    <div class="form-group col-md-5">
+                        <label for="guest-phone">연락처</label>
+                        <input id="guest-phone" class="form-control" type="tel"
+                               required maxlength="20" autocomplete="tel">
+                    </div>
+                    <div class="form-group col-md-2">
+                        <button id="lookup-submit" type="submit"
+                                class="btn btn-primary btn-block">조회</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="lookup-result" class="card d-none" aria-live="polite">
+        <div class="card-body">
+            <h2 class="h5 mb-3">예약 정보</h2>
+            <dl class="row mb-0">
+                <dt class="col-sm-4">예약번호</dt><dd class="col-sm-8" id="result-code"></dd>
+                <dt class="col-sm-4">객실 번호</dt><dd class="col-sm-8" id="result-room"></dd>
+                <dt class="col-sm-4">체크인</dt><dd class="col-sm-8" id="result-check-in"></dd>
+                <dt class="col-sm-4">체크아웃</dt><dd class="col-sm-8" id="result-check-out"></dd>
+                <dt class="col-sm-4">투숙 인원</dt><dd class="col-sm-8" id="result-guests"></dd>
+                <dt class="col-sm-4">예약 상태</dt><dd class="col-sm-8" id="result-status"></dd>
+            </dl>
+        </div>
+    </div>
+
+    <script>
+        const lookupUrl = '/api/public/reservations/lookup';
+        const lookupForm = document.getElementById('lookup-form');
+        const lookupNotice = document.getElementById('lookup-notice');
+        const lookupResult = document.getElementById('lookup-result');
+        const lookupSubmit = document.getElementById('lookup-submit');
+        const lookupStatus = {
+            CONFIRMED: '예약 확정', CANCELLED: '취소', NOSHOW: '노쇼',
+            CHECKED_IN: '투숙 중', CHECKED_OUT: '체크아웃'
+        };
+
+        function renderReservation(reservation) {
+            lookupResult.classList.toggle('d-none', !reservation);
+            document.getElementById('result-code').textContent = reservation?.reservationCode ?? '';
+            document.getElementById('result-room').textContent = reservation?.roomNumber ?? '';
+            document.getElementById('result-check-in').textContent = formatDate(reservation?.checkIn);
+            document.getElementById('result-check-out').textContent = formatDate(reservation?.checkOut);
+            document.getElementById('result-guests').textContent = reservation ? reservation.guestCount + '명' : '';
+            document.getElementById('result-status').textContent = lookupStatus[reservation?.status] ?? '';
+        }
+
+        function showLookupError(error) {
+            lookupNotice.textContent = error.message;
+            lookupNotice.classList.remove('d-none');
+        }
+
+        async function restoreReservation() {
+            lookupSubmit.disabled = true;
+            try {
+                renderReservation(await api('GET', lookupUrl));
+            } catch (error) {
+                showLookupError(error);
+            } finally {
+                lookupSubmit.disabled = false;
+            }
+        }
+
+        lookupForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            if (lookupSubmit.disabled) return;
+            lookupSubmit.disabled = true;
+            lookupNotice.classList.add('d-none');
+            renderReservation(null);
+
+            try {
+                const reservation = await api('POST', lookupUrl, {
+                    reservationCode: document.getElementById('reservation-code').value.trim(),
+                    guestPhone: document.getElementById('guest-phone').value.trim()
+                });
+                lookupForm.reset();
+                renderReservation(reservation);
+            } catch (error) {
+                showLookupError(error);
+            } finally {
+                lookupSubmit.disabled = false;
+            }
+        });
+
+        window.addEventListener('pageshow', event => {
+            if (event.persisted) {
+                renderReservation(null);
+                restoreReservation();
+            }
+        });
+        restoreReservation();
+    </script>
+</section>
+</body>
+</html>
