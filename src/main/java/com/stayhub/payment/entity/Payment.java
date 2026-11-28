@@ -184,7 +184,7 @@ public class Payment extends BaseEntity {
 		PaymentStatus next = switch (rule) {
 			case FULL -> PaymentStatus.REFUNDED;
 			case PARTIAL -> PaymentStatus.PARTIALLY_REFUNDED;
-			case NONE -> throw new IllegalArgumentException("환불하지 않는 경우는 rejectRefund 를 쓰세요.");
+			case NONE -> throw new IllegalArgumentException("환불하지 않는 경우는 rejectRefund를 쓰세요.");
 		};
 		changeStatus(next);
 		this.refundRuleApplied = rule;
