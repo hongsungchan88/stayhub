@@ -18,12 +18,21 @@ START TRANSACTION;
 -- 1) 데모 범위 지우기 (자식 → 부모 순서)
 DELETE FROM messages            WHERE message_id     BETWEEN 900001 AND 900999;
 DELETE FROM message_threads     WHERE thread_id      BETWEEN 900001 AND 900999;
+-- 입실 기록·채널 연결은 ID 가 자동 번호라 예약 번호로 지웁니다. 시연 중 모의 채널 A로 가져온 예약(900051~)도 이 범위입니다.
+DELETE FROM checkin_checkouts           WHERE reservation_id BETWEEN 900001 AND 900999;
+DELETE FROM channel_reservation_links   WHERE reservation_id BETWEEN 900001 AND 900999;
+-- 모의 채널 A는 시연용 채널이라 가져오기 기록을 전부 지웁니다(로그에는 예약 번호가 없음).
+DELETE FROM channel_sync_logs           WHERE channel_name = '모의 채널 A';
 DELETE FROM special_requests    WHERE request_id     BETWEEN 900001 AND 900999;
 DELETE FROM additional_charges  WHERE charge_id      BETWEEN 900001 AND 900999;
+DELETE FROM tax_invoices                WHERE payment_id     BETWEEN 900001 AND 900999;
 DELETE FROM payments            WHERE payment_id     BETWEEN 900001 AND 900999;
 DELETE FROM housekeeping_tasks  WHERE task_id        BETWEEN 900001 AND 900999;
 DELETE FROM reservations        WHERE reservation_id BETWEEN 900001 AND 900999;
 DELETE FROM guidebooks          WHERE guidebook_id   BETWEEN 900001 AND 900999;
+-- 객실 상태 기록·일별 요금도 ID 가 자동 번호라 객실 번호로 지웁니다.
+DELETE FROM room_status_logs            WHERE room_id        BETWEEN 900001 AND 900999;
+DELETE FROM daily_room_rates            WHERE room_id        BETWEEN 900001 AND 900999;
 DELETE FROM rooms               WHERE room_id        BETWEEN 900001 AND 900999;
 DELETE FROM channels            WHERE channel_id     BETWEEN 900001 AND 900999;
 DELETE FROM users               WHERE user_id        BETWEEN 900001 AND 900999;
@@ -143,6 +152,14 @@ INSERT INTO reservations (reservation_id, reservation_code, user_id, guest_name,
 (900049, CONCAT('R', DATE_FORMAT(DATE_ADD(CURDATE(), INTERVAL 21 DAY), '%Y%m%d'), '-DEMO0049'), NULL, '길태민', '010-4776-5368', 900016, 900002, DATE_ADD(CURDATE(), INTERVAL 21 DAY), DATE_ADD(CURDATE(), INTERVAL 23 DAY), 1, 'CANCELLED', NULL, 0, TIMESTAMP(DATE_ADD(CURDATE(), INTERVAL -1 DAY), '18:24:00'), TIMESTAMP(DATE_ADD(CURDATE(), INTERVAL -1 DAY), '09:20:00')),
 (900050, CONCAT('R', DATE_FORMAT(DATE_ADD(CURDATE(), INTERVAL 27 DAY), '%Y%m%d'), '-DEMO0050'), NULL, '마서진', '010-4813-5459', 900019, 900003, DATE_ADD(CURDATE(), INTERVAL 27 DAY), DATE_ADD(CURDATE(), INTERVAL 29 DAY), 2, 'CONFIRMED', NULL, 0, TIMESTAMP(DATE_ADD(CURDATE(), INTERVAL -1 DAY), '19:37:00'), TIMESTAMP(DATE_ADD(CURDATE(), INTERVAL -1 DAY), '19:37:00'));
 
+-- 7-1) 입실 기록 7건. 투숙 중(CHECKED_IN) 예약마다 1행. 키 번호 K-객실번호, 입실 시각 = 예약을 체크인으로 바꾼 시각(updated_at)
+--      체크아웃 전이라 퇴실 시각 NULL, 정산 전이라 extra_fee 0 · is_settled FALSE (체크아웃할 때 앱이 채움)
+INSERT INTO checkin_checkouts (checkin_id, reservation_id, key_code, extra_fee, is_settled, actual_check_in, actual_check_out, created_at, updated_at)
+SELECT 900000 + ROW_NUMBER() OVER (ORDER BY r.reservation_id), r.reservation_id, CONCAT('K-', rm.room_number),
+       0, FALSE, r.updated_at, NULL, r.updated_at, r.updated_at
+FROM reservations r JOIN rooms rm ON rm.room_id = r.room_id
+WHERE r.reservation_id BETWEEN 900001 AND 900999 AND r.status = 'CHECKED_IN';
+
 -- 8) 결제. 취소·노쇼를 뺀 예약 대부분에 결제 완료(COMPLETED). 취소 2건은 환불 완료
 --    결제 수단: 채널 예약은 '사전 결제'(예약 때), 채널 없는 게스트 직접 예약은 '현장 결제'(체크인 때, 1번 직접 예약 채널). 체크인 전 직접 예약은 결제 없음
 --    (체크인 3일 전까지 요청 → 전액 REFUNDED / 이후 → 50% PARTIALLY_REFUNDED)
@@ -245,12 +262,18 @@ JOIN reservations b
 WHERE a.room_id BETWEEN 900001 AND 900999
   AND a.status NOT IN ('CANCELLED', 'NOSHOW') AND b.status NOT IN ('CANCELLED', 'NOSHOW');
 
--- 확인 2) 넣은 건수
+-- 확인 2) 투숙 중인데 입실 기록이 없는 예약. 0행이어야 정상 (있으면 체크아웃이 "입실 기록이 없습니다."로 막힘)
+SELECT r.reservation_id, r.room_id FROM reservations r
+LEFT JOIN checkin_checkouts c ON c.reservation_id = r.reservation_id
+WHERE r.reservation_id BETWEEN 900001 AND 900999 AND r.status = 'CHECKED_IN' AND c.checkin_id IS NULL;
+
+-- 확인 3) 넣은 건수
 SELECT 'users' AS tbl, COUNT(*) AS cnt FROM users WHERE user_id BETWEEN 900001 AND 900999
 UNION ALL SELECT 'channels', COUNT(*) FROM channels WHERE channel_id BETWEEN 900001 AND 900999
 UNION ALL SELECT 'guidebooks', COUNT(*) FROM guidebooks WHERE guidebook_id BETWEEN 900001 AND 900999
 UNION ALL SELECT 'rooms', COUNT(*) FROM rooms WHERE room_id BETWEEN 900001 AND 900999
 UNION ALL SELECT 'reservations', COUNT(*) FROM reservations WHERE reservation_id BETWEEN 900001 AND 900999
+UNION ALL SELECT 'checkin_checkouts', COUNT(*) FROM checkin_checkouts WHERE reservation_id BETWEEN 900001 AND 900999
 UNION ALL SELECT 'payments', COUNT(*) FROM payments WHERE payment_id BETWEEN 900001 AND 900999
 UNION ALL SELECT 'additional_charges', COUNT(*) FROM additional_charges WHERE charge_id BETWEEN 900001 AND 900999
 UNION ALL SELECT 'special_requests', COUNT(*) FROM special_requests WHERE request_id BETWEEN 900001 AND 900999
