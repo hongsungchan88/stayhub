@@ -26,8 +26,11 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -39,6 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @SpringBootTest
 @Transactional
+@ExtendWith(OutputCaptureExtension.class)
 class HousekeepingTaskServiceTest {
 
 	private static final LocalDateTime CHECKOUT_TIME = LocalDateTime.of(2026, 10, 12, 11, 0);
@@ -314,6 +318,57 @@ class HousekeepingTaskServiceTest {
 
 	private HousekeepingTaskResponse changeTaskStatus(Long taskId, HousekeepingTaskStatus newStatus) {
 		return housekeepingTaskService.changeStatus(taskId, new HousekeepingTaskStatusChangeRequest(newStatus), 7L);
+	}
+
+	@Test
+	@DisplayName("관리자 알림: 체크아웃으로 담당 스태프 없는 청소 작업이 생기면 미배정 로그를 남기고, 미리 배정한 작업을 쓰면 남기지 않는다")
+	void checkoutWithoutStaffLogsAlert(CapturedOutput output) {
+		HousekeepingTaskResponse unassigned = housekeepingTaskService.createCheckoutCleaning(occupiedRoom(), CHECKOUT_TIME, 7L);
+		assertThat(output.getOut()).contains(
+				"[관리자 알림] 청소 담당 스태프 미배정: 작업 ID " + unassigned.id() + ", 객실 HK-101.");
+
+		Long roomId = createRoom("HK-102");
+		roomService.changeStatus(roomId, new RoomStatusChangeRequest(RoomStatus.VACANT, RoomStatus.OCCUPIED, "체크인"), 1L);
+		HousekeepingTaskResponse planned = housekeepingTaskService.create(
+				new HousekeepingTaskCreateRequest(roomId, HousekeepingTaskType.CLEANING, CHECKOUT_TIME, 9L, null, SCHEDULED_AT));
+		housekeepingTaskService.createCheckoutCleaning(roomId, CHECKOUT_TIME, 7L);
+		assertThat(output.getOut()).doesNotContain("미배정: 작업 ID " + planned.id() + ",");
+	}
+
+	@Test
+	@DisplayName("관리자 알림: 같은 스태프에게 같은 배정 일시의 끝나지 않은 작업이 겹치면 일정 중복 로그를 남기고, 등록은 막지 않는다")
+	void doubleBookingLogsAlert(CapturedOutput output) {
+		Long roomId = createRoom();
+		Long otherRoomId = createRoom("HK-102");
+		HousekeepingTaskResponse first = housekeepingTaskService.create(
+				new HousekeepingTaskCreateRequest(roomId, null, CHECKOUT_TIME, 9L, null, SCHEDULED_AT));
+		HousekeepingTaskResponse otherTime = housekeepingTaskService.create(
+				new HousekeepingTaskCreateRequest(otherRoomId, null, CHECKOUT_TIME, 9L, null, SCHEDULED_AT.plusHours(1)));
+		assertThat(output.getOut()).doesNotContain("[관리자 알림] 청소 일정 중복");
+
+		HousekeepingTaskResponse second = housekeepingTaskService.create(
+				new HousekeepingTaskCreateRequest(otherRoomId, null, CHECKOUT_TIME, 9L, null, SCHEDULED_AT));
+		assertThat(output.getOut()).contains("[관리자 알림] 청소 일정 중복: 스태프 ID 9, 배정 일시 " + SCHEDULED_AT
+				+ ", 작업 ID " + second.id() + ", 겹치는 작업 ID [" + first.id() + "]");
+		assertThat(housekeepingTaskRepository.count()).isEqualTo(3);
+		assertThat(output.getOut()).doesNotContain("겹치는 작업 ID [" + otherTime.id() + "]");
+	}
+
+	@Test
+	@DisplayName("관리자 알림: 재배정으로 담당 스태프가 바뀌면 재배정 로그를 남긴다")
+	void reassignLogsAlert(CapturedOutput output) {
+		Long roomId = createRoom();
+		HousekeepingTaskResponse task = housekeepingTaskService.create(
+				new HousekeepingTaskCreateRequest(roomId, null, CHECKOUT_TIME, 9L, null, SCHEDULED_AT));
+
+		housekeepingTaskService.update(task.id(), new HousekeepingTaskUpdateRequest(
+				roomId, null, CHECKOUT_TIME, 9L, true, SCHEDULED_AT.plusHours(1)));
+		assertThat(output.getOut()).doesNotContain("[관리자 알림] 청소 작업 재배정");
+
+		housekeepingTaskService.update(task.id(), new HousekeepingTaskUpdateRequest(
+				roomId, null, CHECKOUT_TIME, 5L, true, SCHEDULED_AT.plusHours(1)));
+		assertThat(output.getOut()).contains(
+				"[관리자 알림] 청소 작업 재배정: 작업 ID " + task.id() + ", 객실 HK-101, 스태프 ID 9 → 5");
 	}
 
 	private void assertInvalidTransition(Long taskId, HousekeepingTaskStatus newStatus) {

@@ -49,7 +49,10 @@ public class RoomStatusLog extends BaseEntity {
 	@Column(name = "new_status", nullable = false, columnDefinition = "VARCHAR(20)")
 	private RoomStatus newStatus;
 
-	/** 예약/체크인/체크아웃/청소 완료 등. 정의서에 값 목록이 정해져 있지 않아 enum 이 아닌 문자열로 둡니다. */
+	/**
+	 * 변경 사유. 서버가 자동으로 바꿀 때는 "체크인"·"체크아웃"·"청소 시작"·"청소 완료" 네 가지를 넣고,
+	 * 담당자가 객실 상태 변경 팝업에서 바꿀 때는 직접 입력합니다(필수). 수동 입력이 있어 enum이 아닌 문자열로 둡니다.
+	 */
 	@Column(name = "change_reason", nullable = false, length = 30)
 	private String changeReason;
 

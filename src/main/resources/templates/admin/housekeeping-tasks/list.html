@@ -6,10 +6,11 @@
   이 화면이 하는 일
     GET /api/housekeeping-tasks?page= 로 20건씩 불러와 표로 그립니다. 응답에는 객실 ID 만 있어서,
     객실 목록(GET /api/rooms)을 한 번 불러 객실 번호로 바꿔 보여 줍니다(팝업의 객실 선택에도 씁니다).
-    [작업 등록] → 팝업 → POST /api/housekeeping-tasks. 자동 배정(ROM-003)이 아직 없어서 담당자가 직접 배정합니다.
+    [작업 등록] → 팝업 → POST /api/housekeeping-tasks. 1차는 담당자가 직접 배정합니다(자동 배정은 v2).
+      담당 스태프 미배정·일정 중복·재배정은 서버가 [관리자 알림] 로그로 남깁니다.
     [재배정]   → 같은 팝업에 지금 값을 채워 → PUT /api/housekeeping-tasks/{id} (재배정 여부 체크)
     [작업 시작]·[작업 완료] → 확인 팝업 → PUT /api/housekeeping-tasks/{id}/status
-      청소 작업이면 서버가 객실 상태도 함께 바꿉니다(청소필요 → 청소중 → 빈방). 객실 상태가 맞지 않으면 반려 문구가 팝업 위에 뜹니다.
+      청소 작업이면 서버가 객실 상태도 함께 바꿉니다(청소 필요 → 청소 중 → 빈방). 객실 상태가 맞지 않으면 반려 문구가 팝업 위에 뜹니다.
 
   가이드북과 다른 점
     - 삭제 버튼 없음 — 청소 작업은 삭제 기능이 없는 테이블
@@ -128,9 +129,9 @@
       // 상태별 다음 단계. 서버도 이 순서만 허용합니다(SCHEDULED → IN_PROGRESS → COMPLETED)
       const NEXT = {
         SCHEDULED: { status: 'IN_PROGRESS', button: '작업 시작',
-          message: t => t.taskType === 'CLEANING' ? '청소를 시작합니다. 객실 상태가 청소필요 → 청소중으로 바뀝니다.' : '점검을 시작합니다.' },
+          message: t => t.taskType === 'CLEANING' ? '청소를 시작합니다. 객실 상태가 청소 필요 → 청소 중으로 바뀝니다.' : '점검을 시작합니다.' },
         IN_PROGRESS: { status: 'COMPLETED', button: '작업 완료',
-          message: t => t.taskType === 'CLEANING' ? '청소를 완료합니다. 객실 상태가 청소중 → 빈방으로 바뀝니다.' : '점검을 완료합니다.' },
+          message: t => t.taskType === 'CLEANING' ? '청소를 완료합니다. 객실 상태가 청소 중 → 빈방으로 바뀝니다.' : '점검을 완료합니다.' },
       };
 
       const taskForm = document.getElementById('taskForm');

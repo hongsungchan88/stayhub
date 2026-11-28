@@ -21,7 +21,7 @@ import org.hibernate.annotations.ColumnDefault;
  * 객실 (테이블 {@code rooms}).
  *
  * <p><b>이 파일이 하는 일</b>
- * <br>객실 기본 정보와 현재 객실 상태(빈방/청소필요/청소중/투숙중)를 담습니다.
+ * <br>객실 기본 정보와 현재 객실 상태(빈방/청소 필요/청소 중/투숙 중)를 담습니다.
  * {@code created_at} / {@code updated_at} 은 {@link BaseEntity} 를 상속해서 자동으로 채워집니다.
  *
  * <p>값을 바꾸는 방법은 아래 메서드뿐입니다.
