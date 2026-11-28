@@ -85,9 +85,6 @@
    302호는 특별 요청(아기 침대)과 인박스 문의가 같이 걸려 있어 이야기를 이어 가기 좋습니다.
 4. **청소** (`demo_cleaning`) — `/admin/housekeeping-tasks` 에서 204·305호 청소 시작 → 완료, `/admin/rooms` 에서 객실 상태 변화.
 5. **결제·통계** (`demo_host`) — `/admin/payments` 결제·환불 내역(전액·부분 환불 각 1건), `/admin/channel-commissions` 수수료율,
-   통계 API 최근 30일 가동률·채널별 예약·매출.
+   `/admin` 대시보드에서 최근 30일 가동률·채널별 예약·매출 그래프(조회 조건 변경, CSV 내보내기 팝업).
 6. **인박스** (`demo_front`) — `/admin/messages` 에서 "수동 응대 필요" 스레드에 답장.
 7. **권한(403)** — `demo_staff` 로 `/admin/payments`, `demo_cleaning` 으로 `/admin/reservations` 를 열면 403 화면.
-
-> 11/23 main 기준으로 대시보드(`/admin`)와 체크인/체크아웃(`/admin/check-in-out`) 화면은 아직 "준비 중" 입니다.
-> 데이터는 미리 들어가 있으니 화면이 완성되면 위 순서 그대로 쓰면 됩니다.
