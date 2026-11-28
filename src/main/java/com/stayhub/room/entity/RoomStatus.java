@@ -13,12 +13,12 @@ public enum RoomStatus {
 	/** 빈방 */
 	VACANT,
 
-	/** 청소필요 */
+	/** 청소 필요 */
 	CLEANING_NEEDED,
 
-	/** 청소중 */
+	/** 청소 중 */
 	CLEANING,
 
-	/** 투숙중 */
+	/** 투숙 중 */
 	OCCUPIED
 }

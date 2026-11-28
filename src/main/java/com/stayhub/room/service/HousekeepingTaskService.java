@@ -14,6 +14,10 @@ import com.stayhub.room.entity.RoomStatus;
 import com.stayhub.room.repository.HousekeepingTaskRepository;
 import com.stayhub.room.repository.RoomRepository;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -27,10 +31,17 @@ import org.springframework.transaction.annotation.Transactional;
  * 엔티티는 이 클래스 밖으로 나가지 않습니다.
  *
  * <p><b>트랜잭션 규칙</b> — 클래스에 {@code @Transactional(readOnly = true)}, 쓰기 메서드(등록·수정·상태 변경)에만 {@code @Transactional}.
+ *
+ * <p><b>관리자 알림</b> — ROM-003 예외 처리의 "스태프 부족·일정 중복 시 관리자 알림 및 수동 재배정"은
+ * 1차에서 서버 로그로 남깁니다. 로그 줄은 모두 {@code [관리자 알림]}으로 시작합니다.
+ * 담당 스태프 없이 청소 작업이 생길 때, 같은 스태프에게 같은 배정 일시의 작업이 겹칠 때, 재배정할 때 남깁니다.
+ * 자동 배정과 화면 알림은 v2에서 합니다.
  */
 @Service
 @Transactional(readOnly = true)
 public class HousekeepingTaskService {
+
+	private static final Logger log = LoggerFactory.getLogger(HousekeepingTaskService.class);
 
 	/** 목록 정렬: task_id 오름차순(등록 순). */
 	private static final Sort LIST_SORT = Sort.by(
@@ -78,7 +89,9 @@ public class HousekeepingTaskService {
 				request.isReassigned(),
 				request.scheduledAt()
 		);
-		return HousekeepingTaskResponse.from(housekeepingTaskRepository.save(housekeepingTask));
+		HousekeepingTask saved = housekeepingTaskRepository.save(housekeepingTask);
+		warnIfDoubleBooked(saved);
+		return HousekeepingTaskResponse.from(saved);
 	}
 
 	/** 수정. 없는 항목이거나 없는 객실이면 BusinessException. */
@@ -86,6 +99,7 @@ public class HousekeepingTaskService {
 	public HousekeepingTaskResponse update(Long id, HousekeepingTaskUpdateRequest request) {
 		HousekeepingTask housekeepingTask = findOrThrow(id);
 		checkRoomExists(request.roomId());
+		Long previousStaffId = housekeepingTask.getAssignedStaffId();
 		housekeepingTask.update(
 				request.roomId(),
 				request.taskType(),
@@ -97,6 +111,12 @@ public class HousekeepingTaskService {
 		// save() 를 부르지 않아도 트랜잭션이 끝날 때 바뀐 값이 자동으로 DB 에 반영됩니다. (변경 감지)
 		// 다만 수정일시(updatedAt)는 반영되는 순간에 채워지므로, 응답에 새 값을 담으려고 먼저 반영합니다.
 		housekeepingTaskRepository.flush();
+		if (housekeepingTask.isReassigned() && !Objects.equals(previousStaffId, housekeepingTask.getAssignedStaffId())) {
+			log.info("[관리자 알림] 청소 작업 재배정: 작업 ID {}, 객실 {}, 스태프 ID {} → {}",
+					housekeepingTask.getId(), roomNumber(housekeepingTask.getRoomId()),
+					previousStaffId == null ? "없음" : previousStaffId, housekeepingTask.getAssignedStaffId());
+		}
+		warnIfDoubleBooked(housekeepingTask);
 		return HousekeepingTaskResponse.from(housekeepingTask);
 	}
 
@@ -140,7 +160,8 @@ public class HousekeepingTaskService {
 	 *
 	 * <p>새로 만들 때는 작업의 체크아웃 시각과 배정 일시를 둘 다 {@code checkoutTime}으로 넣습니다.
 	 * 담당 스태프는 비워 둡니다(assigned_staff_id NULL). 스태프 근무 현황을 읽을 방법이 아직 없어서,
-	 * 청소 스케줄 화면에서 [재배정]으로 정합니다. 스태프 자동 배정은 직원 목록 API가 생긴 뒤 이 메서드에 더합니다.
+	 * 청소 스케줄 화면에서 [재배정]으로 정합니다(1차는 수동 배정). 담당 스태프가 없는 작업이 되면
+	 * {@code [관리자 알림]} 서버 로그를 남깁니다. 스태프 자동 배정은 v2입니다.
 	 *
 	 * @param roomId       체크아웃한 예약의 객실 ID
 	 * @param checkoutTime 체크아웃 완료 시각
@@ -162,6 +183,7 @@ public class HousekeepingTaskService {
 			scheduledCleaning.recordCheckout(checkoutTime);
 			// 수정일시(updatedAt)를 응답에 담으려고 먼저 반영합니다. (update 와 같은 이유)
 			housekeepingTaskRepository.flush();
+			warnIfUnassigned(scheduledCleaning);
 			return HousekeepingTaskResponse.from(scheduledCleaning);
 		}
 
@@ -173,7 +195,43 @@ public class HousekeepingTaskService {
 				false,
 				checkoutTime
 		);
-		return HousekeepingTaskResponse.from(housekeepingTaskRepository.save(housekeepingTask));
+		HousekeepingTask saved = housekeepingTaskRepository.save(housekeepingTask);
+		warnIfUnassigned(saved);
+		return HousekeepingTaskResponse.from(saved);
+	}
+
+	/** 담당 스태프가 없는 작업이면 수동 배정이 필요하다는 관리자 알림 로그를 남깁니다(스태프 부족). */
+	private void warnIfUnassigned(HousekeepingTask task) {
+		if (task.getAssignedStaffId() == null) {
+			log.warn("[관리자 알림] 청소 담당 스태프 미배정: 작업 ID {}, 객실 {}. 청소 스케줄 화면에서 배정해 주세요.",
+					task.getId(), roomNumber(task.getRoomId()));
+		}
+	}
+
+	/**
+	 * 같은 스태프에게 같은 배정 일시의 끝나지 않은 작업이 또 있으면 관리자 알림 로그를 남깁니다(일정 중복).
+	 * 등록·수정은 막지 않습니다. 재배정은 담당자가 청소 스케줄 화면에서 합니다.
+	 */
+	private void warnIfDoubleBooked(HousekeepingTask task) {
+		if (task.getAssignedStaffId() == null || task.getStatus() == HousekeepingTaskStatus.COMPLETED) {
+			return;
+		}
+		List<Long> overlapping = housekeepingTaskRepository
+				.findByAssignedStaffIdAndScheduledAtAndStatusNot(
+						task.getAssignedStaffId(), task.getScheduledAt(), HousekeepingTaskStatus.COMPLETED)
+				.stream()
+				.map(HousekeepingTask::getId)
+				.filter(otherId -> !otherId.equals(task.getId()))
+				.toList();
+		if (!overlapping.isEmpty()) {
+			log.warn("[관리자 알림] 청소 일정 중복: 스태프 ID {}, 배정 일시 {}, 작업 ID {}, 겹치는 작업 ID {}. 청소 스케줄 화면에서 재배정해 주세요.",
+					task.getAssignedStaffId(), task.getScheduledAt(), task.getId(), overlapping);
+		}
+	}
+
+	/** 로그에 쓸 객실 번호. */
+	private String roomNumber(Long roomId) {
+		return roomService.getDetail(roomId).roomNumber();
 	}
 
 	/**
