@@ -2,6 +2,7 @@ package com.stayhub.payment.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 
@@ -21,8 +22,9 @@ public record PaymentCreateRequest(
 		@NotNull(message = "예약 채널을 선택해 주세요.")
 		Long channelId,
 
+		// 정의서 PAY-001의 두 값만 받습니다.
 		@NotBlank(message = "결제 수단을 입력해 주세요.")
-		@Size(max = 20, message = "결제 수단은 20자 이내로 입력해 주세요.")
+		@Pattern(regexp = "사전 결제|현장 결제", message = "결제 수단은 사전 결제 또는 현장 결제만 입력할 수 있습니다.")
 		String paymentMethod,
 
 		@NotNull(message = "결제 금액을 입력해 주세요.")
